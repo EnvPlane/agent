@@ -16,6 +16,8 @@ This repository was split from:
 - `agent`
 - shared `internal/domain`
 
-## Runtime Note
+## Runtime
 
-In the monorepo, the agent runtime entrypoint is currently embedded in `apps/api/main.go` behind the `agent` command. This repository contains the agent package and should get a dedicated `cmd/envpilot-agent` binary as the next extraction step.
+`apps/agent` provides the standalone `envpilot-agent` binary used by the
+container image. It supports `agent` (the default) and `agent-install-check`,
+which matches the Helm chart contract.
