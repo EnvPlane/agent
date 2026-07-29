@@ -12,7 +12,7 @@ import (
 const (
 	defaultServiceAccountToken = "/var/run/secrets/kubernetes.io/serviceaccount/token"
 	defaultServiceAccountCA    = "/var/run/secrets/kubernetes.io/serviceaccount/ca.crt"
-	defaultExcludedNamespaces  = "kube-system,kube-public,kube-node-lease,local-path-storage,ingress-nginx,envpilot-system"
+	defaultExcludedNamespaces  = "default,kube-system,kube-public,kube-node-lease,local-path-storage,ingress-nginx,kubernetes-dashboard,envpilot,envpilot-system"
 )
 
 type Config struct {
@@ -43,6 +43,11 @@ func ConfigFromEnv() Config {
 	if strings.TrimSpace(agentAuthToken) == "" {
 		agentAuthToken = readTokenFile(agentAuthTokenFile)
 	}
+	agentNamespace := getenv("ENVPILOT_AGENT_NAMESPACE", "")
+	excludedNamespaces := splitCSV(getenv("ENVPILOT_WATCH_EXCLUDED_NAMESPACES", defaultExcludedNamespaces))
+	if strings.TrimSpace(agentNamespace) != "" {
+		excludedNamespaces = append(excludedNamespaces, strings.TrimSpace(agentNamespace))
+	}
 	return Config{
 		ControlPlaneURL:    getenv("ENVPILOT_CONTROL_PLANE_URL", ""),
 		RegistrationToken:  getenv("ENVPILOT_AGENT_REGISTRATION_TOKEN", ""),
@@ -51,7 +56,7 @@ func ConfigFromEnv() Config {
 		BootstrapProjectID: getenv("ENVPILOT_BOOTSTRAP_PROJECT_ID", ""),
 		ClusterID:          getenv("ENVPILOT_CLUSTER_ID", "default"),
 		AgentID:            getenv("ENVPILOT_AGENT_ID", hostname()),
-		AgentNamespace:     getenv("ENVPILOT_AGENT_NAMESPACE", ""),
+		AgentNamespace:     agentNamespace,
 		AgentVersion:       getenv("ENVPILOT_AGENT_VERSION", "dev"),
 		KubernetesAPIURL:   getenv("ENVPILOT_KUBERNETES_API_URL", inClusterAPIURL()),
 		KubernetesToken:    getenv("ENVPILOT_KUBERNETES_TOKEN_PATH", defaultServiceAccountToken),
@@ -61,7 +66,7 @@ func ConfigFromEnv() Config {
 		// absent and would silently restore the legacy EnvPilot-only selector.
 		NamespaceSelector:  strings.TrimSpace(os.Getenv("ENVPILOT_WATCH_NAMESPACE_SELECTOR")),
 		Namespaces:         splitCSV(getenv("ENVPILOT_WATCH_NAMESPACES", "")),
-		ExcludedNamespaces: splitCSV(getenv("ENVPILOT_WATCH_EXCLUDED_NAMESPACES", defaultExcludedNamespaces)),
+		ExcludedNamespaces: excludedNamespaces,
 		FluxNamespace:      getenv("ENVPILOT_FLUX_NAMESPACE", "flux-system"),
 		ResyncInterval:     time.Duration(getenvInt("ENVPILOT_AGENT_RESYNC_SECONDS", 30)) * time.Second,
 		ReportTimeout:      time.Duration(getenvInt("ENVPILOT_AGENT_REPORT_TIMEOUT_SECONDS", 10)) * time.Second,

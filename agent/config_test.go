@@ -64,11 +64,12 @@ func TestConfigFromEnvUsesChartCompatiblePersistedAgentAuthTokenPath(t *testing.
 func TestConfigFromEnvTreatsEmptyNamespaceSelectorAsAllNamespaces(t *testing.T) {
 	t.Setenv("ENVPILOT_WATCH_NAMESPACE_SELECTOR", "")
 	t.Setenv("ENVPILOT_WATCH_EXCLUDED_NAMESPACES", "kube-system,envpilot-system")
+	t.Setenv("ENVPILOT_AGENT_NAMESPACE", "envpilot-agent")
 	cfg := ConfigFromEnv()
 	if cfg.NamespaceSelector != "" {
 		t.Fatalf("empty selector must mean all namespaces, got %q", cfg.NamespaceSelector)
 	}
-	if got, want := cfg.ExcludedNamespaces, []string{"kube-system", "envpilot-system"}; !reflect.DeepEqual(got, want) {
+	if got, want := cfg.ExcludedNamespaces, []string{"kube-system", "envpilot-system", "envpilot-agent"}; !reflect.DeepEqual(got, want) {
 		t.Fatalf("excluded namespaces = %#v want %#v", got, want)
 	}
 }
