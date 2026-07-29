@@ -39,6 +39,15 @@ type ResourceSnapshot struct {
 	ConfigMapKeys   []string                 `json:"configMapKeys,omitempty"`
 	IngressRules    []ResourceIngressRule    `json:"ingressRules,omitempty"`
 	SourceMapping   *ResourceSourceMapping   `json:"sourceMapping,omitempty"`
+	Health          *ResourceHealth          `json:"health,omitempty"`
+}
+
+// ResourceHealth is the observed readiness of a discovered workload. It is
+// deliberately absent for resource kinds that do not have a stable readiness
+// contract, rather than treating unknown state as healthy.
+type ResourceHealth struct {
+	Status  string `json:"status"`
+	Message string `json:"message,omitempty"`
 }
 
 type ResourceOwnerReference struct {

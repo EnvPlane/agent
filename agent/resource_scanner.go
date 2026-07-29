@@ -271,6 +271,7 @@ func (s *ResourceDiscoveryScanner) listNamespaceResources(ctx context.Context, n
 			Data       map[string]any `json:"data"`
 			BinaryData map[string]any `json:"binaryData"`
 			Spec       struct {
+				Replicas *int64          `json:"replicas"`
 				Selector json.RawMessage `json:"selector"`
 				Template struct {
 					Metadata struct {
@@ -313,6 +314,7 @@ func (s *ResourceDiscoveryScanner) listNamespaceResources(ctx context.Context, n
 					} `json:"http"`
 				} `json:"rules"`
 			} `json:"spec"`
+			Status kubernetesWorkloadStatus `json:"status"`
 		} `json:"items"`
 	}
 	if err := json.Unmarshal(responseBody, &payload); err != nil {
@@ -358,9 +360,59 @@ func (s *ResourceDiscoveryScanner) listNamespaceResources(ctx context.Context, n
 			Containers:      resourceContainersFromSpec(item.Spec.Template.Spec.Containers),
 			ConfigMapKeys:   configMapKeysFromResource(kind, item.Data, item.BinaryData),
 			IngressRules:    resourceIngressRulesFromSpec(item.Spec.Rules),
+			Health:          resourceHealthForWorkload(kind, item.Spec.Replicas, item.Status),
 		})
 	}
 	return snapshots, strings.Join(itemWarnings, "; "), nil
+}
+
+type kubernetesWorkloadStatus struct {
+	ReadyReplicas     int64 `json:"readyReplicas"`
+	AvailableReplicas int64 `json:"availableReplicas"`
+	Conditions        []struct {
+		Type    string `json:"type"`
+		Status  string `json:"status"`
+		Reason  string `json:"reason"`
+		Message string `json:"message"`
+	} `json:"conditions"`
+}
+
+func resourceHealthForWorkload(kind string, replicas *int64, status kubernetesWorkloadStatus) *domain.ResourceHealth {
+	if kind != "Deployment" && kind != "StatefulSet" {
+		return nil
+	}
+	desired := int64(1)
+	if replicas != nil {
+		desired = *replicas
+	}
+	if desired == 0 {
+		return &domain.ResourceHealth{Status: "ready", Message: "scaled to zero"}
+	}
+	available := status.AvailableReplicas
+	if kind == "StatefulSet" && available == 0 {
+		available = status.ReadyReplicas
+	}
+	if status.ReadyReplicas >= desired && available >= desired {
+		return &domain.ResourceHealth{Status: "ready", Message: fmt.Sprintf("%d/%d replicas ready", status.ReadyReplicas, desired)}
+	}
+	reason := ""
+	for _, condition := range status.Conditions {
+		if strings.EqualFold(strings.TrimSpace(condition.Status), "false") {
+			reason = strings.TrimSpace(condition.Reason)
+			if message := strings.TrimSpace(condition.Message); message != "" {
+				if reason != "" {
+					reason += ": "
+				}
+				reason += message
+			}
+			break
+		}
+	}
+	message := fmt.Sprintf("%d/%d replicas ready", status.ReadyReplicas, desired)
+	if reason != "" {
+		message += "; " + reason
+	}
+	return &domain.ResourceHealth{Status: "unhealthy", Message: message}
 }
 
 type kubernetesLabelSelector struct {

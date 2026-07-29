@@ -161,7 +161,8 @@ func TestResourceDiscoveryScannerHandlesKubernetesLabelSelectorsAndMalformedItem
 			_, _ = w.Write([]byte(`{"items":[
 				{"metadata":{"name":"heimdall","namespace":"template"},"spec":{"selector":{"matchLabels":{"app":"heimdall"},"matchExpressions":[{"key":"version","operator":"In","values":["v2"]},{"key":"zone","operator":"Exists"},{"key":"tier","operator":"In","values":["frontend","edge"]}]},"template":{"metadata":{"labels":{"app":"heimdall","version":"v2"}}}}},
 				{"metadata":{"name":"bad-selector","namespace":"template"},"spec":{"selector":"not-a-label-selector"}},
-				{"metadata":{"name":"cms","namespace":"template"},"spec":{"selector":{"matchLabels":{"app":"cms"}},"template":{"metadata":{"labels":{"app":"cms"}}}}}
+				{"metadata":{"name":"cms","namespace":"template"},"spec":{"selector":{"matchLabels":{"app":"cms"}},"template":{"metadata":{"labels":{"app":"cms"}}}}},
+				{"metadata":{"name":"worker.queue-process-events","namespace":"template"},"spec":{"replicas":1,"selector":{"matchLabels":{"app":"worker.queue-process-events"}}},"status":{"readyReplicas":0,"availableReplicas":0,"conditions":[{"type":"Available","status":"False","reason":"MinimumReplicasUnavailable","message":"containers are not ready"}]}}
 			]}`))
 		default:
 			_ = json.NewEncoder(w).Encode(map[string]any{"items": []any{}})
@@ -195,6 +196,10 @@ func TestResourceDiscoveryScannerHandlesKubernetesLabelSelectorsAndMalformedItem
 	}
 	if _, ok := byName["cms"]; !ok {
 		t.Fatalf("valid resource after malformed item was hidden: %#v", result.Snapshots)
+	}
+	worker := byName["worker.queue-process-events"]
+	if worker.Health == nil || worker.Health.Status != "unhealthy" || !strings.Contains(worker.Health.Message, "MinimumReplicasUnavailable") {
+		t.Fatalf("unhealthy worker readiness = %#v", worker.Health)
 	}
 	warnings := strings.Join(result.PermissionWarnings, "\n")
 	if !strings.Contains(warnings, "Deployment/bad-selector: invalid spec.selector") {
