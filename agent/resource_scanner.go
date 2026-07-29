@@ -271,7 +271,7 @@ func (s *ResourceDiscoveryScanner) listNamespaceResources(ctx context.Context, n
 			Data       map[string]any `json:"data"`
 			BinaryData map[string]any `json:"binaryData"`
 			Spec       struct {
-				Selector map[string]string `json:"selector"`
+				Selector json.RawMessage `json:"selector"`
 				Template struct {
 					Metadata struct {
 						Labels map[string]string `json:"labels"`
@@ -325,6 +325,7 @@ func (s *ResourceDiscoveryScanner) listNamespaceResources(ctx context.Context, n
 		return nil, "", fmt.Errorf("decode %s raw list: %w", kind, err)
 	}
 	snapshots := make([]domain.ResourceSnapshot, 0, len(payload.Items))
+	itemWarnings := make([]string, 0)
 	for index, item := range payload.Items {
 		name := strings.TrimSpace(item.Metadata.Name)
 		ns := strings.TrimSpace(item.Metadata.Namespace)
@@ -333,6 +334,10 @@ func (s *ResourceDiscoveryScanner) listNamespaceResources(ctx context.Context, n
 		}
 		if name == "" {
 			continue
+		}
+		selector, selectorErr := labelsFromKubernetesLabelSelector(item.Spec.Selector)
+		if selectorErr != nil {
+			itemWarnings = append(itemWarnings, fmt.Sprintf("%s %s/%s: invalid spec.selector (%v)", namespace, kind, name, selectorErr))
 		}
 		rawManifest := map[string]any(nil)
 		if index < len(rawPayload.Items) {
@@ -346,7 +351,7 @@ func (s *ResourceDiscoveryScanner) listNamespaceResources(ctx context.Context, n
 			Annotations:     item.Metadata.Annotations,
 			Manifest:        rawManifest,
 			OwnerReferences: item.Metadata.OwnerReferences,
-			Selector:        normalizeStringMap(item.Spec.Selector),
+			Selector:        selector,
 			PodLabels:       normalizeStringMap(item.Spec.Template.Metadata.Labels),
 			EnvVars:         resourceEnvVarsFromContainers(item.Spec.Template.Spec.Containers),
 			EnvFrom:         resourceEnvFromRefsFromContainers(item.Spec.Template.Spec.Containers),
@@ -355,7 +360,66 @@ func (s *ResourceDiscoveryScanner) listNamespaceResources(ctx context.Context, n
 			IngressRules:    resourceIngressRulesFromSpec(item.Spec.Rules),
 		})
 	}
-	return snapshots, "", nil
+	return snapshots, strings.Join(itemWarnings, "; "), nil
+}
+
+type kubernetesLabelSelector struct {
+	MatchLabels      map[string]string `json:"matchLabels"`
+	MatchExpressions []struct {
+		Key      string   `json:"key"`
+		Operator string   `json:"operator"`
+		Values   []string `json:"values"`
+	} `json:"matchExpressions"`
+}
+
+func labelsFromKubernetesLabelSelector(raw json.RawMessage) (map[string]string, error) {
+	if len(raw) == 0 || string(raw) == "null" {
+		return nil, nil
+	}
+	var fields map[string]json.RawMessage
+	if err := json.Unmarshal(raw, &fields); err != nil {
+		return nil, err
+	}
+	// Services use spec.selector as a plain label map. Keep supporting it in
+	// the shared scanner while using the Kubernetes LabelSelector shape for
+	// Deployments and StatefulSets.
+	if _, hasMatchLabels := fields["matchLabels"]; !hasMatchLabels {
+		if _, hasMatchExpressions := fields["matchExpressions"]; !hasMatchExpressions {
+			var labels map[string]string
+			if err := json.Unmarshal(raw, &labels); err != nil {
+				return nil, err
+			}
+			return normalizeStringMap(labels), nil
+		}
+	}
+	var selector kubernetesLabelSelector
+	if err := json.Unmarshal(raw, &selector); err != nil {
+		return nil, err
+	}
+	labels := normalizeStringMap(selector.MatchLabels)
+	if labels == nil {
+		labels = map[string]string{}
+	}
+	for _, expression := range selector.MatchExpressions {
+		key := strings.TrimSpace(expression.Key)
+		// A map can represent only an exact equality requirement. Preserve an
+		// In expression with one value; Exists, DoesNotExist, NotIn, and In
+		// with multiple values stay in the sanitized manifest without creating
+		// an incorrect exact selector for service-graph matching.
+		if key == "" || !strings.EqualFold(strings.TrimSpace(expression.Operator), "In") || len(expression.Values) != 1 {
+			continue
+		}
+		if _, set := labels[key]; set {
+			continue
+		}
+		if value := strings.TrimSpace(expression.Values[0]); value != "" {
+			labels[key] = value
+		}
+	}
+	if len(labels) == 0 {
+		return nil, nil
+	}
+	return labels, nil
 }
 
 func sanitizeResourceManifest(kind string, raw map[string]any, namespace string, name string) map[string]any {

@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 
 	"envpilot/internal/domain"
@@ -145,5 +146,68 @@ func TestResourceDiscoveryScannerFluxSourceMapping(t *testing.T) {
 	}
 	if unresolvedSnapshot.SourceMapping == nil || unresolvedSnapshot.SourceMapping.Status != "unresolved" {
 		t.Fatalf("unmapped deployment source mapping = %#v", unresolvedSnapshot.SourceMapping)
+	}
+}
+
+func TestResourceDiscoveryScannerHandlesKubernetesLabelSelectorsAndMalformedItems(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		switch r.URL.Path {
+		case "/api/v1/namespaces/template":
+			_, _ = w.Write([]byte(`{"metadata":{"name":"template"}}`))
+		case "/apis/apps/v1/namespaces/template/deployments":
+			// This is ordinary apps/v1 Deployment JSON, including both LabelSelector
+			// forms Kubernetes emits in production.
+			_, _ = w.Write([]byte(`{"items":[
+				{"metadata":{"name":"heimdall","namespace":"template"},"spec":{"selector":{"matchLabels":{"app":"heimdall"},"matchExpressions":[{"key":"version","operator":"In","values":["v2"]},{"key":"zone","operator":"Exists"},{"key":"tier","operator":"In","values":["frontend","edge"]}]},"template":{"metadata":{"labels":{"app":"heimdall","version":"v2"}}}}},
+				{"metadata":{"name":"bad-selector","namespace":"template"},"spec":{"selector":"not-a-label-selector"}},
+				{"metadata":{"name":"cms","namespace":"template"},"spec":{"selector":{"matchLabels":{"app":"cms"}},"template":{"metadata":{"labels":{"app":"cms"}}}}}
+			]}`))
+		default:
+			_ = json.NewEncoder(w).Encode(map[string]any{"items": []any{}})
+		}
+	}))
+	defer server.Close()
+
+	scanner := NewResourceDiscoveryScanner(NewKubernetesNamespaceSource(server.URL, "token", "", []string{"template"}, server.Client()))
+	result, err := scanner.Scan(context.Background(), []string{"template"})
+	if err != nil {
+		t.Fatalf("scan failed: %v", err)
+	}
+	byName := map[string]domain.ResourceSnapshot{}
+	for _, snapshot := range result.Snapshots {
+		if snapshot.Kind == "Deployment" {
+			byName[snapshot.Name] = snapshot
+		}
+	}
+	heimdall, ok := byName["heimdall"]
+	if !ok {
+		t.Fatalf("normal deployment missing: %#v", result.Snapshots)
+	}
+	if heimdall.Selector["app"] != "heimdall" || heimdall.Selector["version"] != "v2" {
+		t.Fatalf("derived deployment selector = %#v", heimdall.Selector)
+	}
+	if _, hasZone := heimdall.Selector["zone"]; hasZone {
+		t.Fatalf("Exists expression must not become an exact selector: %#v", heimdall.Selector)
+	}
+	if _, hasTier := heimdall.Selector["tier"]; hasTier {
+		t.Fatalf("multi-value In expression must not become an exact selector: %#v", heimdall.Selector)
+	}
+	if _, ok := byName["cms"]; !ok {
+		t.Fatalf("valid resource after malformed item was hidden: %#v", result.Snapshots)
+	}
+	warnings := strings.Join(result.PermissionWarnings, "\n")
+	if !strings.Contains(warnings, "Deployment/bad-selector: invalid spec.selector") {
+		t.Fatalf("malformed selector warning missing: %s", warnings)
+	}
+}
+
+func TestLabelsFromKubernetesLabelSelectorPreservesServiceStyleMap(t *testing.T) {
+	labels, err := labelsFromKubernetesLabelSelector(json.RawMessage(`{"app":"heimdall","component":"api"}`))
+	if err != nil {
+		t.Fatalf("decode service selector: %v", err)
+	}
+	if labels["app"] != "heimdall" || labels["component"] != "api" {
+		t.Fatalf("service selector labels = %#v", labels)
 	}
 }
