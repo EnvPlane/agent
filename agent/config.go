@@ -1,9 +1,11 @@
 package agent
 
 import (
+	"crypto/sha256"
 	"fmt"
 	"os"
 	"path/filepath"
+	"sort"
 	"strconv"
 	"strings"
 	"time"
@@ -35,6 +37,38 @@ type Config struct {
 	ResyncInterval     time.Duration
 	ReportTimeout      time.Duration
 	HeartbeatInterval  time.Duration
+}
+
+// CapabilityConfigFingerprint identifies the configuration that changes
+// capability discovery. It deliberately excludes credentials and endpoints so
+// it is safe to persist in the control plane and display in the UI.
+func (c Config) CapabilityConfigFingerprint() string {
+	normalizeList := func(values []string) string {
+		seen := map[string]struct{}{}
+		items := make([]string, 0, len(values))
+		for _, value := range values {
+			value = strings.TrimSpace(value)
+			if value == "" {
+				continue
+			}
+			if _, ok := seen[value]; ok {
+				continue
+			}
+			seen[value] = struct{}{}
+			items = append(items, value)
+		}
+		sort.Strings(items)
+		return strings.Join(items, ",")
+	}
+	payload := strings.Join([]string{
+		"v1",
+		"selector=" + strings.TrimSpace(c.NamespaceSelector),
+		"namespaces=" + normalizeList(c.Namespaces),
+		"excludedNamespaces=" + normalizeList(c.ExcludedNamespaces),
+		"fluxNamespace=" + strings.TrimSpace(c.FluxNamespace),
+	}, "\x00")
+	sum := sha256.Sum256([]byte(payload))
+	return fmt.Sprintf("sha256:%x", sum[:])
 }
 
 func ConfigFromEnv() Config {

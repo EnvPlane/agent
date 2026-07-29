@@ -150,6 +150,8 @@ func (r *HTTPStatusReporter) ReportFluxStatus(ctx context.Context, environmentID
 }
 
 func (r *HTTPStatusReporter) RegisterAgent(ctx context.Context, cfg Config, capabilities ClusterCapabilities) (string, error) {
+	observedAt := time.Now().UTC()
+	capabilityReport := capabilityReportForPublish(cfg, capabilities, observedAt)
 	payload := domain.AgentRegistrationRequest{
 		ProjectID:                cfg.BootstrapProjectID,
 		ClusterID:                cfg.ClusterID,
@@ -161,9 +163,9 @@ func (r *HTTPStatusReporter) RegisterAgent(ctx context.Context, cfg Config, capa
 		FluxNamespace:            cfg.FluxNamespace,
 		NamespaceSelector:        cfg.NamespaceSelector,
 		Capabilities:             capabilities.Capabilities,
-		CapabilityReport:         &capabilities.Report,
+		CapabilityReport:         &capabilityReport,
 		HeartbeatIntervalSeconds: int(cfg.HeartbeatInterval.Seconds()),
-		ObservedAt:               time.Now().UTC(),
+		ObservedAt:               observedAt,
 	}
 	var response domain.AgentRegistrationResponse
 	if err := r.postJSONDecode(ctx, "/api/v1/agents/register", payload, "register agent", &response); err != nil {
@@ -177,19 +179,30 @@ func (r *HTTPStatusReporter) ReportHeartbeat(ctx context.Context, cfg Config, ca
 	if statusErr != nil {
 		errorMessage = statusErr.Error()
 	}
+	observedAt := time.Now().UTC()
+	capabilityReport := capabilityReportForPublish(cfg, capabilities, observedAt)
 	payload := domain.AgentHeartbeatRequest{
-		ProjectID:         cfg.BootstrapProjectID,
-		ClusterID:         cfg.ClusterID,
-		AgentID:           cfg.AgentID,
-		AgentAuthToken:    cfg.AgentAuthToken,
-		AgentVersion:      cfg.AgentVersion,
-		KubernetesVersion: capabilities.KubernetesVersion,
-		Capabilities:      capabilities.Capabilities,
-		Status:            status,
-		Error:             errorMessage,
-		ObservedAt:        time.Now().UTC(),
+		ProjectID:                cfg.BootstrapProjectID,
+		ClusterID:                cfg.ClusterID,
+		AgentID:                  cfg.AgentID,
+		AgentAuthToken:           cfg.AgentAuthToken,
+		AgentVersion:             cfg.AgentVersion,
+		KubernetesVersion:        capabilities.KubernetesVersion,
+		Capabilities:             capabilities.Capabilities,
+		CapabilityReport:         &capabilityReport,
+		HeartbeatIntervalSeconds: int(cfg.HeartbeatInterval.Seconds()),
+		Status:                   status,
+		Error:                    errorMessage,
+		ObservedAt:               observedAt,
 	}
 	return r.postJSON(ctx, "/api/v1/agents/heartbeat", payload, "report heartbeat")
+}
+
+func capabilityReportForPublish(cfg Config, capabilities ClusterCapabilities, observedAt time.Time) domain.ClusterCapabilityReport {
+	report := capabilities.Report
+	report.ConfigFingerprint = cfg.CapabilityConfigFingerprint()
+	report.ObservedAt = &observedAt
+	return report
 }
 
 func (r *HTTPStatusReporter) ReportResourceScan(ctx context.Context, cfg Config, result ResourceScanResult) error {

@@ -135,14 +135,16 @@ type AgentRegistrationResponse struct {
 }
 
 type AgentHeartbeatRequest struct {
-	ProjectID         string    `json:"projectId,omitempty"`
-	ClusterID         string    `json:"clusterId"`
-	AgentID           string    `json:"agentId"`
-	AgentAuthToken    string    `json:"agentAuthToken,omitempty"`
-	AgentVersion      string    `json:"agentVersion,omitempty"`
-	KubernetesVersion string    `json:"kubernetesVersion,omitempty"`
-	Capabilities      []string  `json:"capabilities,omitempty"`
-	Status            string    `json:"status,omitempty"`
-	Error             string    `json:"error,omitempty"`
-	ObservedAt        time.Time `json:"observedAt,omitempty"`
+	ProjectID                string                   `json:"projectId,omitempty"`
+	ClusterID                string                   `json:"clusterId"`
+	AgentID                  string                   `json:"agentId"`
+	AgentAuthToken           string                   `json:"agentAuthToken,omitempty"`
+	AgentVersion             string                   `json:"agentVersion,omitempty"`
+	KubernetesVersion        string                   `json:"kubernetesVersion,omitempty"`
+	Capabilities             []string                 `json:"capabilities,omitempty"`
+	CapabilityReport         *ClusterCapabilityReport `json:"capabilityReport,omitempty"`
+	HeartbeatIntervalSeconds int                      `json:"heartbeatIntervalSeconds,omitempty"`
+	Status                   string                   `json:"status,omitempty"`
+	Error                    string                   `json:"error,omitempty"`
+	ObservedAt               time.Time                `json:"observedAt,omitempty"`
 }

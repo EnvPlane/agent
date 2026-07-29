@@ -246,6 +246,12 @@ func TestHTTPStatusReporterRegistersAgentAndSendsHeartbeat(t *testing.T) {
 	if heartbeat.AgentAuthToken != "agent-auth-token" {
 		t.Fatalf("heartbeat auth token = %#v", heartbeat)
 	}
+	if heartbeat.CapabilityReport == nil || heartbeat.CapabilityReport.ConfigFingerprint != cfg.CapabilityConfigFingerprint() {
+		t.Fatalf("heartbeat must refresh the capability report with the config fingerprint: %#v", heartbeat)
+	}
+	if heartbeat.HeartbeatIntervalSeconds != 30 || heartbeat.CapabilityReport.ObservedAt == nil {
+		t.Fatalf("heartbeat capability metadata = %#v", heartbeat)
+	}
 }
 
 func TestHTTPStatusReporterResourceScanUsesAgentAuthTokenAfterRegistration(t *testing.T) {

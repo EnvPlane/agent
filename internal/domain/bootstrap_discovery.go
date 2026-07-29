@@ -6,18 +6,21 @@ import (
 )
 
 type ClusterCapabilityReport struct {
-	KubernetesVersion  string   `json:"kubernetesVersion,omitempty"`
-	Namespaces         []string `json:"namespaces,omitempty"`
-	NamespaceSelector  string   `json:"namespaceSelector,omitempty"`
-	NamespaceMode      string   `json:"namespaceMode,omitempty"`
-	ExcludedNamespaces []string `json:"excludedNamespaces,omitempty"`
-	IngressControllers []string `json:"ingressControllers,omitempty"`
-	FluxCRDs           []string `json:"fluxCRDs,omitempty"`
-	CertManagerCRDs    []string `json:"certManagerCRDs,omitempty"`
-	ExternalDNSPresent bool     `json:"externalDNSPresent,omitempty"`
-	StorageClasses     []string `json:"storageClasses,omitempty"`
-	PermissionWarnings []string `json:"permissionWarnings,omitempty"`
-	CapabilityFlags    []string `json:"capabilityFlags,omitempty"`
+	Revision           int        `json:"revision,omitempty"`
+	ObservedAt         *time.Time `json:"observedAt,omitempty"`
+	ConfigFingerprint  string     `json:"configFingerprint,omitempty"`
+	KubernetesVersion  string     `json:"kubernetesVersion,omitempty"`
+	Namespaces         []string   `json:"namespaces,omitempty"`
+	NamespaceSelector  string     `json:"namespaceSelector,omitempty"`
+	NamespaceMode      string     `json:"namespaceMode,omitempty"`
+	ExcludedNamespaces []string   `json:"excludedNamespaces,omitempty"`
+	IngressControllers []string   `json:"ingressControllers,omitempty"`
+	FluxCRDs           []string   `json:"fluxCRDs,omitempty"`
+	CertManagerCRDs    []string   `json:"certManagerCRDs,omitempty"`
+	ExternalDNSPresent bool       `json:"externalDNSPresent,omitempty"`
+	StorageClasses     []string   `json:"storageClasses,omitempty"`
+	PermissionWarnings []string   `json:"permissionWarnings,omitempty"`
+	CapabilityFlags    []string   `json:"capabilityFlags,omitempty"`
 }
 
 type ResourceSnapshot struct {
@@ -144,17 +147,18 @@ type AgentRegistrationTokenResponse struct {
 }
 
 type BootstrapAgentStatusResponse struct {
-	Status             string                   `json:"status"`
-	ClusterID          string                   `json:"clusterId,omitempty"`
-	AgentID            string                   `json:"agentId,omitempty"`
-	LastSeenAt         *time.Time               `json:"lastSeenAt,omitempty"`
-	TokenExpiresAt     *time.Time               `json:"tokenExpiresAt,omitempty"`
-	TokenIssuedAt      *time.Time               `json:"tokenIssuedAt,omitempty"`
-	CapabilityReport   *ClusterCapabilityReport `json:"capabilityReport,omitempty"`
-	SelectedNamespaces []string                 `json:"selectedNamespaces,omitempty"`
-	ResourceScanStatus string                   `json:"resourceScanStatus,omitempty"`
-	ResourceCount      int                      `json:"resourceCount,omitempty"`
-	Error              string                   `json:"error,omitempty"`
+	Status                string                   `json:"status"`
+	ClusterID             string                   `json:"clusterId,omitempty"`
+	AgentID               string                   `json:"agentId,omitempty"`
+	LastSeenAt            *time.Time               `json:"lastSeenAt,omitempty"`
+	TokenExpiresAt        *time.Time               `json:"tokenExpiresAt,omitempty"`
+	TokenIssuedAt         *time.Time               `json:"tokenIssuedAt,omitempty"`
+	CapabilityReport      *ClusterCapabilityReport `json:"capabilityReport,omitempty"`
+	CapabilityReportStale bool                     `json:"capabilityReportStale,omitempty"`
+	SelectedNamespaces    []string                 `json:"selectedNamespaces,omitempty"`
+	ResourceScanStatus    string                   `json:"resourceScanStatus,omitempty"`
+	ResourceCount         int                      `json:"resourceCount,omitempty"`
+	Error                 string                   `json:"error,omitempty"`
 }
 
 type AgentResourceScanRequest struct {

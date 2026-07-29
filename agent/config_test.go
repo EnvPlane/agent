@@ -95,3 +95,26 @@ func TestPersistAgentAuthTokenWritesCredentialFile(t *testing.T) {
 		t.Fatalf("token file mode = %o", info.Mode().Perm())
 	}
 }
+
+func TestCapabilityConfigFingerprintChangesOnlyForDiscoveryConfiguration(t *testing.T) {
+	base := Config{
+		NamespaceSelector:  "app.kubernetes.io/managed-by=envpilot",
+		Namespaces:         []string{"team-a", "team-b"},
+		ExcludedNamespaces: []string{"kube-system", "default"},
+		FluxNamespace:      "flux-system",
+		AgentAuthToken:     "must-not-affect-fingerprint",
+	}
+	if got, want := base.CapabilityConfigFingerprint(), base.CapabilityConfigFingerprint(); got != want {
+		t.Fatalf("fingerprint must be stable: %q != %q", got, want)
+	}
+	reordered := base
+	reordered.Namespaces = []string{"team-b", "team-a"}
+	if got, want := reordered.CapabilityConfigFingerprint(), base.CapabilityConfigFingerprint(); got != want {
+		t.Fatalf("fingerprint must ignore list ordering: %q != %q", got, want)
+	}
+	changed := base
+	changed.NamespaceSelector = "team=payments"
+	if changed.CapabilityConfigFingerprint() == base.CapabilityConfigFingerprint() {
+		t.Fatal("selector change must alter fingerprint")
+	}
+}
