@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"reflect"
+	"strings"
 	"testing"
 )
 
@@ -208,6 +209,12 @@ func TestKubernetesNamespaceSourceDiscoversCapabilities(t *testing.T) {
 				{Metadata: NamespaceMetadata{Name: "dev-cms"}},
 				{Metadata: NamespaceMetadata{Name: "kube-system"}},
 			}})
+		case "/apis/networking.k8s.io/v1/ingressclasses":
+			_ = json.NewEncoder(w).Encode(map[string]any{"items": []any{map[string]any{"metadata": map[string]string{"name": "nginx"}, "spec": map[string]string{"controller": "k8s.io/ingress-nginx"}}}})
+		case "/apis/apiextensions.k8s.io/v1/customresourcedefinitions":
+			_ = json.NewEncoder(w).Encode(map[string]any{"items": []any{map[string]any{"metadata": map[string]string{"name": "kustomizations.kustomize.toolkit.fluxcd.io"}}}})
+		case "/apis/storage.k8s.io/v1/storageclasses":
+			_ = json.NewEncoder(w).Encode(map[string]any{"items": []any{map[string]any{"metadata": map[string]string{"name": "standard"}}}})
 		case "/api/v1", "/apis/apps/v1", "/apis/kustomize.toolkit.fluxcd.io/v1", "/apis/helm.toolkit.fluxcd.io/v2":
 			_ = json.NewEncoder(w).Encode(map[string]string{"kind": "APIResourceList"})
 		default:
@@ -234,5 +241,34 @@ func TestKubernetesNamespaceSourceDiscoversCapabilities(t *testing.T) {
 	}
 	if capabilities.Report.NamespaceMode != "all" || !reflect.DeepEqual(capabilities.Report.ExcludedNamespaces, []string{"kube-system"}) {
 		t.Fatalf("namespace diagnostics = %#v", capabilities.Report)
+	}
+	if got, want := capabilities.Report.IngressControllers, []string{"nginx"}; !reflect.DeepEqual(got, want) {
+		t.Fatalf("ingress classes = %#v want %#v", got, want)
+	}
+	if got, want := capabilities.Report.StorageClasses, []string{"standard"}; !reflect.DeepEqual(got, want) {
+		t.Fatalf("storage classes = %#v want %#v", got, want)
+	}
+}
+
+func TestKubernetesNamespaceSourceReportsCapabilityRBACForbidden(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/apis/networking.k8s.io/v1/ingressclasses", "/apis/apiextensions.k8s.io/v1/customresourcedefinitions", "/apis/storage.k8s.io/v1/storageclasses":
+			http.Error(w, "forbidden by RBAC", http.StatusForbidden)
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+	defer server.Close()
+
+	capabilities, err := NewKubernetesNamespaceSource(server.URL, "kube-token", "", nil, server.Client()).DiscoverCapabilities(context.Background())
+	if err != nil {
+		t.Fatalf("discover capabilities: %v", err)
+	}
+	warnings := strings.Join(capabilities.Report.PermissionWarnings, "\n")
+	for _, resource := range []string{"ingressclasses.networking.k8s.io", "customresourcedefinitions.apiextensions.k8s.io", "storageclasses.storage.k8s.io"} {
+		if !strings.Contains(warnings, "RBAC forbidden: cannot list "+resource) {
+			t.Fatalf("expected RBAC warning for %s, got %s", resource, warnings)
+		}
 	}
 }

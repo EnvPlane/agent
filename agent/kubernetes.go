@@ -519,6 +519,9 @@ func (s *KubernetesNamespaceSource) FluxNamespace() string {
 
 func (s *KubernetesNamespaceSource) ListIngressControllers(ctx context.Context) ([]string, error) {
 	type ingressClass struct {
+		Metadata struct {
+			Name string `json:"name"`
+		} `json:"metadata"`
 		Spec struct {
 			Controller string `json:"controller"`
 		} `json:"spec"`
@@ -538,7 +541,7 @@ func (s *KubernetesNamespaceSource) ListIngressControllers(ctx context.Context) 
 	defer resp.Body.Close()
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
 		body, _ := io.ReadAll(io.LimitReader(resp.Body, 4096))
-		return nil, fmt.Errorf("list ingress classes failed: status=%d body=%s", resp.StatusCode, strings.TrimSpace(string(body)))
+		return nil, kubernetesListError("ingressclasses.networking.k8s.io", resp.StatusCode, body)
 	}
 	var list ingressClassList
 	if err := json.NewDecoder(resp.Body).Decode(&list); err != nil {
@@ -547,15 +550,18 @@ func (s *KubernetesNamespaceSource) ListIngressControllers(ctx context.Context) 
 	controllers := make([]string, 0, len(list.Items))
 	seen := map[string]struct{}{}
 	for _, item := range list.Items {
-		controller := strings.TrimSpace(item.Spec.Controller)
-		if controller == "" {
+		name := strings.TrimSpace(item.Metadata.Name)
+		if name == "" {
+			name = strings.TrimSpace(item.Spec.Controller)
+		}
+		if name == "" {
 			continue
 		}
-		if _, ok := seen[controller]; ok {
+		if _, ok := seen[name]; ok {
 			continue
 		}
-		seen[controller] = struct{}{}
-		controllers = append(controllers, controller)
+		seen[name] = struct{}{}
+		controllers = append(controllers, name)
 	}
 	sort.Strings(controllers)
 	return controllers, nil
@@ -582,7 +588,7 @@ func (s *KubernetesNamespaceSource) ListCRDNames(ctx context.Context) ([]string,
 	defer resp.Body.Close()
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
 		body, _ := io.ReadAll(io.LimitReader(resp.Body, 4096))
-		return nil, fmt.Errorf("list CRDs failed: status=%d body=%s", resp.StatusCode, strings.TrimSpace(string(body)))
+		return nil, kubernetesListError("customresourcedefinitions.apiextensions.k8s.io", resp.StatusCode, body)
 	}
 	var list crdList
 	if err := json.NewDecoder(resp.Body).Decode(&list); err != nil {
@@ -619,7 +625,7 @@ func (s *KubernetesNamespaceSource) ListStorageClasses(ctx context.Context) ([]s
 	defer resp.Body.Close()
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
 		body, _ := io.ReadAll(io.LimitReader(resp.Body, 4096))
-		return nil, fmt.Errorf("list storageclasses failed: status=%d body=%s", resp.StatusCode, strings.TrimSpace(string(body)))
+		return nil, kubernetesListError("storageclasses.storage.k8s.io", resp.StatusCode, body)
 	}
 	var list storageClassList
 	if err := json.NewDecoder(resp.Body).Decode(&list); err != nil {
@@ -633,6 +639,15 @@ func (s *KubernetesNamespaceSource) ListStorageClasses(ctx context.Context) ([]s
 	}
 	sort.Strings(names)
 	return names, nil
+}
+
+func kubernetesListError(resource string, statusCode int, body []byte) error {
+	resource = strings.TrimSpace(resource)
+	message := strings.TrimSpace(string(body))
+	if statusCode == http.StatusForbidden {
+		return fmt.Errorf("RBAC forbidden: cannot list %s: %s", resource, message)
+	}
+	return fmt.Errorf("list %s failed: status=%d body=%s", resource, statusCode, message)
 }
 
 func (s *KubernetesNamespaceSource) newNamespacesRequest(ctx context.Context, watch bool) (*http.Request, error) {
