@@ -3,6 +3,7 @@ package agent
 import (
 	"os"
 	"path/filepath"
+	"reflect"
 	"testing"
 )
 
@@ -57,6 +58,18 @@ func TestConfigFromEnvUsesChartCompatiblePersistedAgentAuthTokenPath(t *testing.
 	}
 	if err := cfg.Validate(); err != nil {
 		t.Fatalf("validate config with chart-compatible persisted auth token: %v", err)
+	}
+}
+
+func TestConfigFromEnvTreatsEmptyNamespaceSelectorAsAllNamespaces(t *testing.T) {
+	t.Setenv("ENVPILOT_WATCH_NAMESPACE_SELECTOR", "")
+	t.Setenv("ENVPILOT_WATCH_EXCLUDED_NAMESPACES", "kube-system,envpilot-system")
+	cfg := ConfigFromEnv()
+	if cfg.NamespaceSelector != "" {
+		t.Fatalf("empty selector must mean all namespaces, got %q", cfg.NamespaceSelector)
+	}
+	if got, want := cfg.ExcludedNamespaces, []string{"kube-system", "envpilot-system"}; !reflect.DeepEqual(got, want) {
+		t.Fatalf("excluded namespaces = %#v want %#v", got, want)
 	}
 }
 

@@ -41,6 +41,7 @@ type KubernetesNamespaceSource struct {
 	token    string
 	selector string
 	allowed  map[string]struct{}
+	excluded map[string]struct{}
 	fluxNS   string
 	client   *http.Client
 }
@@ -274,54 +275,74 @@ func NewKubernetesNamespaceSourceFromConfig(cfg Config) (*KubernetesNamespaceSou
 	if err != nil {
 		return nil, err
 	}
-	source := NewKubernetesNamespaceSource(cfg.KubernetesAPIURL, token, cfg.NamespaceSelector, cfg.Namespaces, client)
+	source := NewKubernetesNamespaceSource(cfg.KubernetesAPIURL, token, cfg.NamespaceSelector, cfg.Namespaces, client, cfg.ExcludedNamespaces...)
 	source.fluxNS = cfg.FluxNamespace
 	return source, nil
 }
 
-func NewKubernetesNamespaceSource(apiURL, token, selector string, namespaces []string, client *http.Client) *KubernetesNamespaceSource {
+func NewKubernetesNamespaceSource(apiURL, token, selector string, namespaces []string, client *http.Client, excludedNamespaces ...string) *KubernetesNamespaceSource {
 	if client == nil {
 		client = http.DefaultClient
 	}
 	allowed := make(map[string]struct{}, len(namespaces))
 	for _, namespace := range namespaces {
-		allowed[namespace] = struct{}{}
+		if name := strings.TrimSpace(namespace); name != "" {
+			allowed[name] = struct{}{}
+		}
+	}
+	excluded := make(map[string]struct{}, len(excludedNamespaces))
+	for _, namespace := range excludedNamespaces {
+		if name := strings.TrimSpace(namespace); name != "" {
+			excluded[name] = struct{}{}
+		}
 	}
 	return &KubernetesNamespaceSource{
 		apiURL:   strings.TrimRight(apiURL, "/"),
 		token:    strings.TrimSpace(token),
 		selector: strings.TrimSpace(selector),
 		allowed:  allowed,
+		excluded: excluded,
 		fluxNS:   "flux-system",
 		client:   client,
 	}
 }
 
 func (s *KubernetesNamespaceSource) ListNamespaces(ctx context.Context) ([]Namespace, error) {
+	items, _, err := s.listNamespaces(ctx)
+	return items, err
+}
+
+func (s *KubernetesNamespaceSource) listNamespaces(ctx context.Context) ([]Namespace, []string, error) {
 	req, err := s.newNamespacesRequest(ctx, false)
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 	resp, err := s.client.Do(req)
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 	defer resp.Body.Close()
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
 		body, _ := io.ReadAll(io.LimitReader(resp.Body, 4096))
-		return nil, fmt.Errorf("list namespaces failed: status=%d body=%s", resp.StatusCode, strings.TrimSpace(string(body)))
+		return nil, nil, fmt.Errorf("list namespaces failed: status=%d body=%s", resp.StatusCode, strings.TrimSpace(string(body)))
 	}
 	var list namespaceList
 	if err := json.NewDecoder(resp.Body).Decode(&list); err != nil {
-		return nil, fmt.Errorf("decode namespace list: %w", err)
+		return nil, nil, fmt.Errorf("decode namespace list: %w", err)
 	}
 	items := make([]Namespace, 0, len(list.Items))
+	excluded := make([]string, 0)
 	for _, item := range list.Items {
+		if s.isExcludedNamespace(item.Metadata.Name) {
+			excluded = append(excluded, item.Metadata.Name)
+			continue
+		}
 		if s.allowedNamespace(item.Metadata.Name) {
 			items = append(items, item)
 		}
 	}
-	return items, nil
+	sort.Strings(excluded)
+	return items, excluded, nil
 }
 
 func (s *KubernetesNamespaceSource) WatchNamespaces(ctx context.Context, handle func(NamespaceEvent) error) error {
@@ -643,10 +664,18 @@ func (s *KubernetesNamespaceSource) newKubernetesGET(ctx context.Context, endpoi
 }
 
 func (s *KubernetesNamespaceSource) allowedNamespace(name string) bool {
+	if s.isExcludedNamespace(name) {
+		return false
+	}
 	if len(s.allowed) == 0 {
 		return true
 	}
 	_, ok := s.allowed[name]
+	return ok
+}
+
+func (s *KubernetesNamespaceSource) isExcludedNamespace(name string) bool {
+	_, ok := s.excluded[strings.TrimSpace(name)]
 	return ok
 }
 

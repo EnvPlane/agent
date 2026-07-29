@@ -52,7 +52,7 @@ func (s *KubernetesNamespaceSource) DiscoverCapabilities(ctx context.Context) (C
 			capabilities[capability] = struct{}{}
 		}
 	}
-	namespaces, err := s.ListNamespaces(ctx)
+	namespaces, excludedNamespaces, err := s.listNamespaces(ctx)
 	if err != nil {
 		report.PermissionWarnings = append(report.PermissionWarnings, fmt.Sprintf("list namespaces failed: %v", err))
 	} else {
@@ -64,6 +64,13 @@ func (s *KubernetesNamespaceSource) DiscoverCapabilities(ctx context.Context) (C
 		}
 		sort.Strings(items)
 		report.Namespaces = items
+		report.ExcludedNamespaces = excludedNamespaces
+		if strings.TrimSpace(s.selector) == "" {
+			report.NamespaceMode = "all"
+		} else {
+			report.NamespaceMode = "label-selector"
+			report.NamespaceSelector = s.selector
+		}
 	}
 	ingressControllers, err := s.ListIngressControllers(ctx)
 	if err != nil {

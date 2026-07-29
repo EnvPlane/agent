@@ -8,6 +8,9 @@ import (
 type ClusterCapabilityReport struct {
 	KubernetesVersion  string   `json:"kubernetesVersion,omitempty"`
 	Namespaces         []string `json:"namespaces,omitempty"`
+	NamespaceSelector  string   `json:"namespaceSelector,omitempty"`
+	NamespaceMode      string   `json:"namespaceMode,omitempty"`
+	ExcludedNamespaces []string `json:"excludedNamespaces,omitempty"`
 	IngressControllers []string `json:"ingressControllers,omitempty"`
 	FluxCRDs           []string `json:"fluxCRDs,omitempty"`
 	CertManagerCRDs    []string `json:"certManagerCRDs,omitempty"`

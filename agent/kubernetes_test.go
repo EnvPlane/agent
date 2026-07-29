@@ -41,6 +41,38 @@ func TestKubernetesNamespaceSourceListsSelectedNamespaces(t *testing.T) {
 	}
 }
 
+func TestKubernetesNamespaceSourceDiscoversPreExistingNamespacesInAllMode(t *testing.T) {
+	var gotSelector string
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		gotSelector = r.URL.Query().Get("labelSelector")
+		_ = json.NewEncoder(w).Encode(namespaceList{Items: []Namespace{
+			{Metadata: NamespaceMetadata{Name: "dev-cms"}},
+			{Metadata: NamespaceMetadata{Name: "dev-frontend"}},
+			{Metadata: NamespaceMetadata{Name: "kube-system"}},
+		}})
+	}))
+	defer server.Close()
+
+	source := NewKubernetesNamespaceSource(server.URL, "kube-token", "", nil, server.Client(), "kube-system")
+	items, err := source.ListNamespaces(context.Background())
+	if err != nil {
+		t.Fatalf("list namespaces: %v", err)
+	}
+	if gotSelector != "" {
+		t.Fatalf("all-namespaces mode must not set labelSelector, got %q", gotSelector)
+	}
+	if got, want := []string{items[0].Metadata.Name, items[1].Metadata.Name}, []string{"dev-cms", "dev-frontend"}; !reflect.DeepEqual(got, want) {
+		t.Fatalf("pre-existing namespaces = %#v want %#v", got, want)
+	}
+	_, excluded, err := source.listNamespaces(context.Background())
+	if err != nil {
+		t.Fatalf("list namespaces with diagnostics: %v", err)
+	}
+	if !reflect.DeepEqual(excluded, []string{"kube-system"}) {
+		t.Fatalf("excluded namespaces = %#v", excluded)
+	}
+}
+
 func TestKubernetesNamespaceSourceListsDeploymentsPodsAndIngresses(t *testing.T) {
 	var paths []string
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -171,6 +203,11 @@ func TestKubernetesNamespaceSourceDiscoversCapabilities(t *testing.T) {
 		switch r.URL.Path {
 		case "/version":
 			_ = json.NewEncoder(w).Encode(map[string]string{"gitVersion": "v1.30.1"})
+		case "/api/v1/namespaces":
+			_ = json.NewEncoder(w).Encode(namespaceList{Items: []Namespace{
+				{Metadata: NamespaceMetadata{Name: "dev-cms"}},
+				{Metadata: NamespaceMetadata{Name: "kube-system"}},
+			}})
 		case "/api/v1", "/apis/apps/v1", "/apis/kustomize.toolkit.fluxcd.io/v1", "/apis/helm.toolkit.fluxcd.io/v2":
 			_ = json.NewEncoder(w).Encode(map[string]string{"kind": "APIResourceList"})
 		default:
@@ -179,7 +216,7 @@ func TestKubernetesNamespaceSourceDiscoversCapabilities(t *testing.T) {
 	}))
 	defer server.Close()
 
-	source := NewKubernetesNamespaceSource(server.URL, "kube-token", "", nil, server.Client())
+	source := NewKubernetesNamespaceSource(server.URL, "kube-token", "", nil, server.Client(), "kube-system")
 	capabilities, err := source.DiscoverCapabilities(context.Background())
 	if err != nil {
 		t.Fatalf("discover capabilities: %v", err)
@@ -191,5 +228,11 @@ func TestKubernetesNamespaceSourceDiscoversCapabilities(t *testing.T) {
 	}
 	if !reflect.DeepEqual(capabilities.Capabilities, expected) {
 		t.Fatalf("capabilities = %#v", capabilities.Capabilities)
+	}
+	if got, want := capabilities.Report.Namespaces, []string{"dev-cms"}; !reflect.DeepEqual(got, want) {
+		t.Fatalf("discovered namespaces = %#v want %#v", got, want)
+	}
+	if capabilities.Report.NamespaceMode != "all" || !reflect.DeepEqual(capabilities.Report.ExcludedNamespaces, []string{"kube-system"}) {
+		t.Fatalf("namespace diagnostics = %#v", capabilities.Report)
 	}
 }

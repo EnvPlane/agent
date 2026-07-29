@@ -12,7 +12,7 @@ import (
 const (
 	defaultServiceAccountToken = "/var/run/secrets/kubernetes.io/serviceaccount/token"
 	defaultServiceAccountCA    = "/var/run/secrets/kubernetes.io/serviceaccount/ca.crt"
-	defaultNamespaceSelector   = "app.kubernetes.io/managed-by=envpilot"
+	defaultExcludedNamespaces  = "kube-system,kube-public,kube-node-lease,local-path-storage,ingress-nginx,envpilot-system"
 )
 
 type Config struct {
@@ -30,6 +30,7 @@ type Config struct {
 	KubernetesCA       string
 	NamespaceSelector  string
 	Namespaces         []string
+	ExcludedNamespaces []string
 	FluxNamespace      string
 	ResyncInterval     time.Duration
 	ReportTimeout      time.Duration
@@ -55,8 +56,12 @@ func ConfigFromEnv() Config {
 		KubernetesAPIURL:   getenv("ENVPILOT_KUBERNETES_API_URL", inClusterAPIURL()),
 		KubernetesToken:    getenv("ENVPILOT_KUBERNETES_TOKEN_PATH", defaultServiceAccountToken),
 		KubernetesCA:       getenv("ENVPILOT_KUBERNETES_CA_PATH", defaultServiceAccountCA),
-		NamespaceSelector:  getenv("ENVPILOT_WATCH_NAMESPACE_SELECTOR", defaultNamespaceSelector),
+		// An empty selector intentionally means all namespaces. Do not use
+		// getenv here because it treats an explicitly empty environment value as
+		// absent and would silently restore the legacy EnvPilot-only selector.
+		NamespaceSelector:  strings.TrimSpace(os.Getenv("ENVPILOT_WATCH_NAMESPACE_SELECTOR")),
 		Namespaces:         splitCSV(getenv("ENVPILOT_WATCH_NAMESPACES", "")),
+		ExcludedNamespaces: splitCSV(getenv("ENVPILOT_WATCH_EXCLUDED_NAMESPACES", defaultExcludedNamespaces)),
 		FluxNamespace:      getenv("ENVPILOT_FLUX_NAMESPACE", "flux-system"),
 		ResyncInterval:     time.Duration(getenvInt("ENVPILOT_AGENT_RESYNC_SECONDS", 30)) * time.Second,
 		ReportTimeout:      time.Duration(getenvInt("ENVPILOT_AGENT_REPORT_TIMEOUT_SECONDS", 10)) * time.Second,
