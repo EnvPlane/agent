@@ -147,18 +147,25 @@ type AgentRegistrationTokenResponse struct {
 }
 
 type BootstrapAgentStatusResponse struct {
-	Status                string                   `json:"status"`
-	ClusterID             string                   `json:"clusterId,omitempty"`
-	AgentID               string                   `json:"agentId,omitempty"`
-	LastSeenAt            *time.Time               `json:"lastSeenAt,omitempty"`
-	TokenExpiresAt        *time.Time               `json:"tokenExpiresAt,omitempty"`
-	TokenIssuedAt         *time.Time               `json:"tokenIssuedAt,omitempty"`
-	CapabilityReport      *ClusterCapabilityReport `json:"capabilityReport,omitempty"`
-	CapabilityReportStale bool                     `json:"capabilityReportStale,omitempty"`
-	SelectedNamespaces    []string                 `json:"selectedNamespaces,omitempty"`
-	ResourceScanStatus    string                   `json:"resourceScanStatus,omitempty"`
-	ResourceCount         int                      `json:"resourceCount,omitempty"`
-	Error                 string                   `json:"error,omitempty"`
+	Status                  string                   `json:"status"`
+	ClusterID               string                   `json:"clusterId,omitempty"`
+	AgentID                 string                   `json:"agentId,omitempty"`
+	LastSeenAt              *time.Time               `json:"lastSeenAt,omitempty"`
+	TokenExpiresAt          *time.Time               `json:"tokenExpiresAt,omitempty"`
+	TokenIssuedAt           *time.Time               `json:"tokenIssuedAt,omitempty"`
+	CapabilityReport        *ClusterCapabilityReport `json:"capabilityReport,omitempty"`
+	CapabilityReportStale   bool                     `json:"capabilityReportStale,omitempty"`
+	SelectedNamespaces      []string                 `json:"selectedNamespaces,omitempty"`
+	ResourceScanStatus      string                   `json:"resourceScanStatus,omitempty"`
+	ResourceScanID          string                   `json:"resourceScanId,omitempty"`
+	ResourceScanAttempt     int                      `json:"resourceScanAttempt,omitempty"`
+	ResourceScanStartedAt   *time.Time               `json:"resourceScanStartedAt,omitempty"`
+	ResourceScanDeadlineAt  *time.Time               `json:"resourceScanDeadlineAt,omitempty"`
+	ResourceScanCompletedAt *time.Time               `json:"resourceScanCompletedAt,omitempty"`
+	ResourceScanFailedAt    *time.Time               `json:"resourceScanFailedAt,omitempty"`
+	ResourceScanError       string                   `json:"resourceScanError,omitempty"`
+	ResourceCount           int                      `json:"resourceCount,omitempty"`
+	Error                   string                   `json:"error,omitempty"`
 }
 
 type AgentResourceScanRequest struct {
@@ -167,6 +174,10 @@ type AgentResourceScanRequest struct {
 	ClusterID          string                      `json:"clusterId"`
 	ClusterIDSnake     string                      `json:"cluster_id,omitempty"`
 	AgentID            string                      `json:"agentId"`
+	ScanID             string                      `json:"scanId"`
+	Status             string                      `json:"status"`
+	ErrorCode          string                      `json:"errorCode,omitempty"`
+	Error              string                      `json:"error,omitempty"`
 	ResourceSnapshots  []ResourceSnapshot          `json:"resourceSnapshots"`
 	ServiceGraph       ServiceGraph                `json:"serviceGraph,omitempty"`
 	ServiceEnvs        ServiceEnvironmentVariables `json:"serviceEnvs,omitempty"`
@@ -178,8 +189,11 @@ type AgentResourceScanTaskResponse struct {
 	ProjectID  string    `json:"projectId"`
 	ClusterID  string    `json:"clusterId"`
 	AgentID    string    `json:"agentId"`
+	ScanID     string    `json:"scanId"`
+	Attempt    int       `json:"attempt"`
 	Namespaces []string  `json:"namespaces"`
 	ObservedAt time.Time `json:"observedAt"`
+	DeadlineAt time.Time `json:"deadlineAt"`
 }
 
 type RunnerDeploymentMode string

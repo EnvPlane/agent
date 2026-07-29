@@ -205,11 +205,16 @@ func capabilityReportForPublish(cfg Config, capabilities ClusterCapabilities, ob
 	return report
 }
 
-func (r *HTTPStatusReporter) ReportResourceScan(ctx context.Context, cfg Config, result ResourceScanResult) error {
+func (r *HTTPStatusReporter) ReportResourceScan(ctx context.Context, cfg Config, task *domain.AgentResourceScanTaskResponse, result ResourceScanResult) error {
+	if task == nil || strings.TrimSpace(task.ScanID) == "" {
+		return fmt.Errorf("resource scan task scan id is required")
+	}
 	payload := domain.AgentResourceScanRequest{
 		ProjectID:          cfg.BootstrapProjectID,
 		ClusterID:          cfg.ClusterID,
 		AgentID:            cfg.AgentID,
+		ScanID:             task.ScanID,
+		Status:             "completed",
 		ResourceSnapshots:  result.Snapshots,
 		ServiceGraph:       result.ServiceGraph,
 		ServiceEnvs:        result.ServiceEnvs,
@@ -217,6 +222,26 @@ func (r *HTTPStatusReporter) ReportResourceScan(ctx context.Context, cfg Config,
 		ObservedAt:         time.Now().UTC(),
 	}
 	return r.postJSONWithBearer(ctx, "/api/v1/agents/resource-scan", payload, cfg.AgentAuthToken, "report resource scan")
+}
+
+// ReportResourceScanFailure acknowledges a dispatched scan that could not be
+// completed. The diagnostic is intentionally generic: detailed scanner errors
+// stay in the agent log and must not be copied into bootstrap session data.
+func (r *HTTPStatusReporter) ReportResourceScanFailure(ctx context.Context, cfg Config, task *domain.AgentResourceScanTaskResponse) error {
+	if task == nil || strings.TrimSpace(task.ScanID) == "" {
+		return fmt.Errorf("resource scan task scan id is required")
+	}
+	payload := domain.AgentResourceScanRequest{
+		ProjectID:  cfg.BootstrapProjectID,
+		ClusterID:  cfg.ClusterID,
+		AgentID:    cfg.AgentID,
+		ScanID:     task.ScanID,
+		Status:     "failed",
+		ErrorCode:  "resource_scan_failed",
+		Error:      "Resource discovery failed. Check agent logs and retry.",
+		ObservedAt: time.Now().UTC(),
+	}
+	return r.postJSONWithBearer(ctx, "/api/v1/agents/resource-scan", payload, cfg.AgentAuthToken, "report resource scan failure")
 }
 
 func (r *HTTPStatusReporter) FetchResourceScanTask(ctx context.Context, cfg Config) (*domain.AgentResourceScanTaskResponse, error) {

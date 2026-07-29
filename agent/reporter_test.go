@@ -288,6 +288,8 @@ func TestHTTPStatusReporterResourceScanUsesAgentAuthTokenAfterRegistration(t *te
 				ProjectID:  "bootstrap-project",
 				ClusterID:  "dev-us",
 				AgentID:    "agent-1",
+				ScanID:     "scan-1",
+				Attempt:    1,
 				Namespaces: []string{"dev-base"},
 				ObservedAt: time.Now().UTC(),
 			})
@@ -331,7 +333,7 @@ func TestHTTPStatusReporterResourceScanUsesAgentAuthTokenAfterRegistration(t *te
 	if task == nil || len(task.Namespaces) != 1 || task.Namespaces[0] != "dev-base" {
 		t.Fatalf("task = %#v", task)
 	}
-	err = reporter.ReportResourceScan(context.Background(), cfg, ResourceScanResult{
+	err = reporter.ReportResourceScan(context.Background(), cfg, task, ResourceScanResult{
 		Snapshots: []domain.ResourceSnapshot{{Kind: "Deployment", Namespace: "dev-base", Name: "orders"}},
 	})
 	if err != nil {
@@ -349,6 +351,9 @@ func TestHTTPStatusReporterResourceScanUsesAgentAuthTokenAfterRegistration(t *te
 	}
 	if scanAuth != "Bearer agent-auth-token" {
 		t.Fatalf("scan authorization = %q", scanAuth)
+	}
+	if scanPayload.ScanID != "scan-1" || scanPayload.Status != "completed" {
+		t.Fatalf("scan acknowledgement = %#v", scanPayload)
 	}
 	if bytes.Contains(rawScanBody, []byte("agentAuthToken")) || bytes.Contains(rawScanBody, []byte("agent_auth_token")) {
 		t.Fatalf("scan payload should not include agent auth token when Authorization is used: %s", string(rawScanBody))
