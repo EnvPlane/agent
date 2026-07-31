@@ -216,3 +216,18 @@ func TestLabelsFromKubernetesLabelSelectorPreservesServiceStyleMap(t *testing.T)
 		t.Fatalf("service selector labels = %#v", labels)
 	}
 }
+
+func TestSanitizeResourceManifestDefaultsRequiredAPIVersion(t *testing.T) {
+	for kind, expectedAPIVersion := range map[string]string{
+		"ConfigMap":  "v1",
+		"Deployment": "apps/v1",
+		"Ingress":    "networking.k8s.io/v1",
+	} {
+		manifest := sanitizeResourceManifest(kind, map[string]any{
+			"metadata": map[string]any{"name": "fixture"},
+		}, "template", "fixture")
+		if got := manifest["apiVersion"]; got != expectedAPIVersion {
+			t.Fatalf("%s apiVersion = %q, want %q", kind, got, expectedAPIVersion)
+		}
+	}
+}
