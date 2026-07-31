@@ -33,6 +33,7 @@ type Config struct {
 	NamespaceSelector  string
 	Namespaces         []string
 	ExcludedNamespaces []string
+	ReadSecrets        bool
 	FluxNamespace      string
 	ResyncInterval     time.Duration
 	ReportTimeout      time.Duration
@@ -66,6 +67,7 @@ func (c Config) CapabilityConfigFingerprint() string {
 		"namespaces=" + normalizeList(c.Namespaces),
 		"excludedNamespaces=" + normalizeList(c.ExcludedNamespaces),
 		"fluxNamespace=" + strings.TrimSpace(c.FluxNamespace),
+		"readSecrets=" + strconv.FormatBool(c.ReadSecrets),
 	}, "\x00")
 	sum := sha256.Sum256([]byte(payload))
 	return fmt.Sprintf("sha256:%x", sum[:])
@@ -101,6 +103,7 @@ func ConfigFromEnv() Config {
 		NamespaceSelector:  strings.TrimSpace(os.Getenv("ENVPILOT_WATCH_NAMESPACE_SELECTOR")),
 		Namespaces:         splitCSV(getenv("ENVPILOT_WATCH_NAMESPACES", "")),
 		ExcludedNamespaces: excludedNamespaces,
+		ReadSecrets:        getenvBool("ENVPILOT_DISCOVERY_READ_SECRETS", false),
 		FluxNamespace:      getenv("ENVPILOT_FLUX_NAMESPACE", "flux-system"),
 		ResyncInterval:     time.Duration(getenvInt("ENVPILOT_AGENT_RESYNC_SECONDS", 30)) * time.Second,
 		ReportTimeout:      time.Duration(getenvInt("ENVPILOT_AGENT_REPORT_TIMEOUT_SECONDS", 10)) * time.Second,
@@ -185,6 +188,18 @@ func getenvInt(key string, fallback int) int {
 		return fallback
 	}
 	parsed, err := strconv.Atoi(value)
+	if err != nil {
+		return fallback
+	}
+	return parsed
+}
+
+func getenvBool(key string, fallback bool) bool {
+	value := strings.TrimSpace(os.Getenv(key))
+	if value == "" {
+		return fallback
+	}
+	parsed, err := strconv.ParseBool(value)
 	if err != nil {
 		return fallback
 	}

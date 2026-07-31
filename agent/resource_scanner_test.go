@@ -149,6 +149,37 @@ func TestResourceDiscoveryScannerFluxSourceMapping(t *testing.T) {
 	}
 }
 
+func TestResourceDiscoveryScannerDoesNotCallSecretsAPIWithoutExplicitOptIn(t *testing.T) {
+	paths := make([]string, 0)
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		paths = append(paths, r.URL.Path)
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode(map[string]any{"items": []any{}})
+	}))
+	defer server.Close()
+
+	source := NewKubernetesNamespaceSource(server.URL, "token", "", []string{"template"}, server.Client())
+	if _, err := NewResourceDiscoveryScanner(source).Scan(context.Background(), []string{"template"}); err != nil {
+		t.Fatalf("default scan: %v", err)
+	}
+	for _, path := range paths {
+		if strings.HasSuffix(path, "/secrets") {
+			t.Fatalf("default scanner must not read Secret resources: %s", path)
+		}
+	}
+
+	paths = nil
+	if _, err := NewResourceDiscoveryScanner(source, true).Scan(context.Background(), []string{"template"}); err != nil {
+		t.Fatalf("secret-enabled scan: %v", err)
+	}
+	for _, path := range paths {
+		if strings.HasSuffix(path, "/secrets") {
+			return
+		}
+	}
+	t.Fatal("secret-enabled scanner did not call the Secrets API")
+}
+
 func TestResourceDiscoveryScannerHandlesKubernetesLabelSelectorsAndMalformedItems(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")

@@ -74,6 +74,17 @@ func TestConfigFromEnvTreatsEmptyNamespaceSelectorAsAllNamespaces(t *testing.T) 
 	}
 }
 
+func TestConfigFromEnvDisablesSecretDiscoveryUnlessExplicitlyEnabled(t *testing.T) {
+	t.Setenv("ENVPILOT_DISCOVERY_READ_SECRETS", "")
+	if ConfigFromEnv().ReadSecrets {
+		t.Fatal("secret discovery must be disabled by default")
+	}
+	t.Setenv("ENVPILOT_DISCOVERY_READ_SECRETS", "true")
+	if !ConfigFromEnv().ReadSecrets {
+		t.Fatal("secret discovery must be enabled only by explicit configuration")
+	}
+}
+
 func TestPersistAgentAuthTokenWritesCredentialFile(t *testing.T) {
 	tokenPath := filepath.Join(t.TempDir(), "credentials", "agent-auth-token")
 	cfg := Config{AgentAuthTokenFile: tokenPath}
@@ -116,5 +127,10 @@ func TestCapabilityConfigFingerprintChangesOnlyForDiscoveryConfiguration(t *test
 	changed.NamespaceSelector = "team=payments"
 	if changed.CapabilityConfigFingerprint() == base.CapabilityConfigFingerprint() {
 		t.Fatal("selector change must alter fingerprint")
+	}
+	changed = base
+	changed.ReadSecrets = true
+	if changed.CapabilityConfigFingerprint() == base.CapabilityConfigFingerprint() {
+		t.Fatal("secret discovery change must alter fingerprint")
 	}
 }
