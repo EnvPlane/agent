@@ -31,12 +31,12 @@ jobs:
       - id: source_read_auth
         name: Select source checkout authentication
         env:
-          APP_ID: ${{ secrets.ENVPILOT_AUTOMATION_APP_ID }}
+          CLIENT_ID: ${{ secrets.ENVPILOT_AUTOMATION_APP_CLIENT_ID }}
           APP_PRIVATE_KEY: ${{ secrets.ENVPILOT_AUTOMATION_APP_PRIVATE_KEY }}
           FALLBACK_PAT: ${{ secrets.ENVPILOT_AUTOMATION_PAT }}
         run: |
           set -euo pipefail
-          if [[ -n "$APP_ID" && -n "$APP_PRIVATE_KEY" ]]; then
+          if [[ -n "$CLIENT_ID" && -n "$APP_PRIVATE_KEY" ]]; then
             echo "method=app" >> "$GITHUB_OUTPUT"
           elif [[ -n "$FALLBACK_PAT" ]]; then
             echo "method=pat" >> "$GITHUB_OUTPUT"
@@ -47,9 +47,9 @@ jobs:
           fi
       - id: source_read_app
         if: steps.source_read_auth.outputs.method == 'app'
-        uses: actions/create-github-app-token@v1
+        uses: actions/create-github-app-token@v3
         with:
-          app-id: ${{ secrets.ENVPILOT_AUTOMATION_APP_ID }}
+          client-id: ${{ secrets.ENVPILOT_AUTOMATION_APP_CLIENT_ID }}
           private-key: ${{ secrets.ENVPILOT_AUTOMATION_APP_PRIVATE_KEY }}
           owner: ${{ github.repository_owner }}
           repositories: deploy
@@ -123,12 +123,12 @@ jobs:
         if: (github.event_name == 'push' || github.event_name == 'workflow_dispatch') && github.ref == 'refs/heads/main'
         name: Select deploy dispatch authentication
         env:
-          APP_ID: ${{ secrets.ENVPILOT_AUTOMATION_APP_ID }}
+          CLIENT_ID: ${{ secrets.ENVPILOT_AUTOMATION_APP_CLIENT_ID }}
           APP_PRIVATE_KEY: ${{ secrets.ENVPILOT_AUTOMATION_APP_PRIVATE_KEY }}
           FALLBACK_PAT: ${{ secrets.ENVPILOT_AUTOMATION_PAT }}
         run: |
           set -euo pipefail
-          if [[ -n "$APP_ID" && -n "$APP_PRIVATE_KEY" ]]; then
+          if [[ -n "$CLIENT_ID" && -n "$APP_PRIVATE_KEY" ]]; then
             echo "method=app" >> "$GITHUB_OUTPUT"
           elif [[ -n "$FALLBACK_PAT" ]]; then
             echo "method=pat" >> "$GITHUB_OUTPUT"
@@ -139,9 +139,9 @@ jobs:
           fi
       - id: deploy_dispatch_app
         if: (github.event_name == 'push' || github.event_name == 'workflow_dispatch') && github.ref == 'refs/heads/main' && steps.dispatch_auth.outputs.method == 'app'
-        uses: actions/create-github-app-token@v1
+        uses: actions/create-github-app-token@v3
         with:
-          app-id: ${{ secrets.ENVPILOT_AUTOMATION_APP_ID }}
+          client-id: ${{ secrets.ENVPILOT_AUTOMATION_APP_CLIENT_ID }}
           private-key: ${{ secrets.ENVPILOT_AUTOMATION_APP_PRIVATE_KEY }}
           owner: ${{ github.repository_owner }}
           repositories: deploy
@@ -158,7 +158,7 @@ jobs:
             --header "Accept: application/vnd.github+json" \
             --header "Authorization: Bearer $GH_TOKEN" \
             --header "X-GitHub-Api-Version: 2022-11-28" \
-            --data "$(jq -cn --argjson payload "$METADATA" --arg source_repository "${{ github.repository }}" --arg source_revision "${{ github.sha }}" '{event_type:"component-image-published",client_payload:$payload + {source_repository:$source_repository,source_revision:$source_revision,publication_id:($payload.component + ":" + $source_revision + ":" + $payload.digest)}}')"
+            --data "$(jq -cn --argjson payload "$METADATA" --arg source_repository "${{ github.repository }}" --arg source_revision "${{ github.sha }}" '{event_type:"component-image-published",client_payload:($payload + {source_repository:$source_repository,source_revision:$source_revision,publication_id:($payload.component + ":" + $source_revision + ":" + $payload.digest)})}')"
       - name: Dispatch immutable image update with PAT fallback
         if: (github.event_name == 'push' || github.event_name == 'workflow_dispatch') && github.ref == 'refs/heads/main' && steps.dispatch_auth.outputs.method == 'pat'
         env:
@@ -171,4 +171,4 @@ jobs:
             --header "Accept: application/vnd.github+json" \
             --header "Authorization: Bearer $GH_TOKEN" \
             --header "X-GitHub-Api-Version: 2022-11-28" \
-            --data "$(jq -cn --argjson payload "$METADATA" --arg source_repository "${{ github.repository }}" --arg source_revision "${{ github.sha }}" '{event_type:"component-image-published",client_payload:$payload + {source_repository:$source_repository,source_revision:$source_revision,publication_id:($payload.component + ":" + $source_revision + ":" + $payload.digest)}}')"
+            --data "$(jq -cn --argjson payload "$METADATA" --arg source_repository "${{ github.repository }}" --arg source_revision "${{ github.sha }}" '{event_type:"component-image-published",client_payload:($payload + {source_repository:$source_repository,source_revision:$source_revision,publication_id:($payload.component + ":" + $source_revision + ":" + $payload.digest)})}')"
