@@ -24,8 +24,10 @@ func main() {
 		runAgent(logger)
 	case "agent-install-check":
 		runAgentInstallCheck(logger)
+	case "agent-connectivity-check":
+		runAgentConnectivityCheck(logger)
 	default:
-		logger.Error("unknown agent command", "command", command, "usage", "agent|agent-install-check")
+		logger.Error("unknown agent command", "command", command, "usage", "agent|agent-install-check|agent-connectivity-check")
 		os.Exit(2)
 	}
 }
@@ -94,6 +96,20 @@ func runAgentInstallCheck(logger *slog.Logger) {
 		os.Exit(1)
 	}
 	logger.Info("agent install check completed", "cluster_id", cfg.ClusterID, "agent_id", cfg.AgentID)
+}
+
+// runAgentConnectivityCheck deliberately checks only the control-plane health
+// endpoint. It is used before Helm installation from the same Agent image that
+// will run after installation, without consuming a one-time bootstrap token.
+func runAgentConnectivityCheck(logger *slog.Logger) {
+	cfg := clusteragent.ConfigFromEnv()
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+	if err := clusteragent.CheckControlPlaneHealth(ctx, cfg.ControlPlaneURL, cfg.ReportTimeout); err != nil {
+		logger.Error("agent control-plane connectivity check failed", "error", err)
+		os.Exit(1)
+	}
+	logger.Info("agent control-plane connectivity check completed", "control_plane_url", cfg.ControlPlaneURL)
 }
 
 func ensureRuntimeAuth(ctx context.Context, cfg clusteragent.Config, reporter *clusteragent.HTTPStatusReporter, capabilities clusteragent.ClusterCapabilities, logger *slog.Logger) (clusteragent.Config, error) {

@@ -19,5 +19,7 @@ This repository was split from:
 ## Runtime
 
 `apps/agent` provides the standalone `envpilot-agent` binary used by the
-container image. It supports `agent` (the default) and `agent-install-check`,
-which matches the Helm chart contract.
+container image. It supports `agent` (the default), `agent-install-check`, and
+`agent-connectivity-check`. The connectivity check probes only
+`/api/v1/health` from the Agent image and never consumes a bootstrap token; the
+generated bootstrap instruction uses it before Helm installation.
