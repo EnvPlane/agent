@@ -43,15 +43,25 @@ func NewHTTPStatusReporter(baseURL, token string, timeout time.Duration) *HTTPSt
 }
 
 func NewHTTPStatusReporterForAgent(baseURL, token, clusterID, agentID string, timeout time.Duration) *HTTPStatusReporter {
+	return NewHTTPStatusReporterForAgentWithCAFile(baseURL, token, clusterID, agentID, timeout, "")
+}
+
+func NewHTTPStatusReporterForAgentWithCAFile(baseURL, token, clusterID, agentID string, timeout time.Duration, caFile string) *HTTPStatusReporter {
 	if timeout <= 0 {
 		timeout = 10 * time.Second
+	}
+	client, err := NewControlPlaneHTTPClient(timeout, caFile)
+	if err != nil {
+		// Preserve the reporter API for callers that report configuration errors
+		// through their normal registration/heartbeat path.
+		client = &http.Client{Timeout: timeout}
 	}
 	return &HTTPStatusReporter{
 		baseURL:   strings.TrimRight(baseURL, "/"),
 		token:     strings.TrimSpace(token),
 		clusterID: strings.TrimSpace(clusterID),
 		agentID:   strings.TrimSpace(agentID),
-		client:    &http.Client{Timeout: timeout},
+		client:    client,
 	}
 }
 

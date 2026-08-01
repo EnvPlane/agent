@@ -19,6 +19,7 @@ const (
 
 type Config struct {
 	ControlPlaneURL    string
+	ControlPlaneCAFile string
 	RegistrationToken  string
 	AgentAuthToken     string
 	AgentAuthTokenFile string
@@ -86,6 +87,7 @@ func ConfigFromEnv() Config {
 	}
 	return Config{
 		ControlPlaneURL:    getenv("ENVPILOT_CONTROL_PLANE_URL", ""),
+		ControlPlaneCAFile: getenv("ENVPILOT_CONTROL_PLANE_CA_FILE", ""),
 		RegistrationToken:  getenv("ENVPILOT_AGENT_REGISTRATION_TOKEN", ""),
 		AgentAuthToken:     agentAuthToken,
 		AgentAuthTokenFile: agentAuthTokenFile,
@@ -114,6 +116,11 @@ func ConfigFromEnv() Config {
 func (c Config) Validate() error {
 	if strings.TrimSpace(c.ControlPlaneURL) == "" {
 		return fmt.Errorf("ENVPILOT_CONTROL_PLANE_URL is required")
+	}
+	if strings.TrimSpace(c.ControlPlaneCAFile) != "" {
+		if _, err := NewControlPlaneHTTPClient(c.ReportTimeout, c.ControlPlaneCAFile); err != nil {
+			return fmt.Errorf("invalid ENVPILOT_CONTROL_PLANE_CA_FILE: %w", err)
+		}
 	}
 	if strings.TrimSpace(c.ClusterID) == "" {
 		return fmt.Errorf("ENVPILOT_CLUSTER_ID is required")

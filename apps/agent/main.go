@@ -43,7 +43,7 @@ func runAgent(logger *slog.Logger) {
 		logger.Error("failed to initialise kubernetes namespace source", "error", err)
 		os.Exit(1)
 	}
-	reporter := clusteragent.NewHTTPStatusReporterForAgent(cfg.ControlPlaneURL, "", cfg.ClusterID, cfg.AgentID, cfg.ReportTimeout)
+	reporter := clusteragent.NewHTTPStatusReporterForAgentWithCAFile(cfg.ControlPlaneURL, "", cfg.ClusterID, cfg.AgentID, cfg.ReportTimeout, cfg.ControlPlaneCAFile)
 	watcher := clusteragent.NewNamespaceWatcher(source, reporter, cfg.ResyncInterval, logger)
 	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
 	defer stop()
@@ -85,7 +85,7 @@ func runAgentInstallCheck(logger *slog.Logger) {
 		logger.Error("cluster capability discovery failed", "error", err)
 		os.Exit(1)
 	}
-	reporter := clusteragent.NewHTTPStatusReporterForAgent(cfg.ControlPlaneURL, "", cfg.ClusterID, cfg.AgentID, cfg.ReportTimeout)
+	reporter := clusteragent.NewHTTPStatusReporterForAgentWithCAFile(cfg.ControlPlaneURL, "", cfg.ClusterID, cfg.AgentID, cfg.ReportTimeout, cfg.ControlPlaneCAFile)
 	cfg, err = ensureRuntimeAuth(ctx, cfg, reporter, capabilities, logger)
 	if err != nil {
 		logger.Error("agent registration failed", "error", err)
@@ -105,7 +105,7 @@ func runAgentConnectivityCheck(logger *slog.Logger) {
 	cfg := clusteragent.ConfigFromEnv()
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
-	if err := clusteragent.CheckControlPlaneHealth(ctx, cfg.ControlPlaneURL, cfg.ReportTimeout); err != nil {
+	if err := clusteragent.CheckControlPlaneHealthWithCAFile(ctx, cfg.ControlPlaneURL, cfg.ReportTimeout, cfg.ControlPlaneCAFile); err != nil {
 		logger.Error("agent control-plane connectivity check failed", "error", err)
 		os.Exit(1)
 	}
