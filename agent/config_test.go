@@ -4,7 +4,9 @@ import (
 	"os"
 	"path/filepath"
 	"reflect"
+	"strings"
 	"testing"
+	"time"
 )
 
 func TestConfigFromEnvLoadsPersistedAgentAuthTokenFile(t *testing.T) {
@@ -82,6 +84,40 @@ func TestConfigFromEnvDisablesSecretDiscoveryUnlessExplicitlyEnabled(t *testing.
 	t.Setenv("ENVPILOT_DISCOVERY_READ_SECRETS", "true")
 	if !ConfigFromEnv().ReadSecrets {
 		t.Fatal("secret discovery must be enabled only by explicit configuration")
+	}
+}
+
+func TestConfigRejectsHostLocalRemoteControlPlaneEndpoint(t *testing.T) {
+	cfg := Config{
+		ControlPlaneURL:          "http://host.minikube.internal:18080",
+		ControlPlaneEndpointMode: "remote",
+		RegistrationToken:        "registration-token",
+		ClusterID:                "remote-cluster",
+		AgentID:                  "remote-agent",
+		KubernetesAPIURL:         "https://kubernetes.example",
+		ResyncInterval:           time.Second,
+		ReportTimeout:            time.Second,
+		HeartbeatInterval:        time.Second,
+	}
+	if err := cfg.Validate(); err == nil || !strings.Contains(err.Error(), "target-pod-reachable") {
+		t.Fatalf("remote host-local endpoint error=%v", err)
+	}
+}
+
+func TestConfigAllowsServiceDNSOnlyForSameCluster(t *testing.T) {
+	cfg := Config{
+		ControlPlaneURL:          "http://envpilot-control-plane.envpilot.svc:8080",
+		ControlPlaneEndpointMode: "sameCluster",
+		RegistrationToken:        "registration-token",
+		ClusterID:                "same-cluster",
+		AgentID:                  "same-agent",
+		KubernetesAPIURL:         "https://kubernetes.example",
+		ResyncInterval:           time.Second,
+		ReportTimeout:            time.Second,
+		HeartbeatInterval:        time.Second,
+	}
+	if err := cfg.Validate(); err != nil {
+		t.Fatalf("same-cluster Service DNS must be valid: %v", err)
 	}
 }
 

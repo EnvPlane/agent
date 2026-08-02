@@ -3,6 +3,7 @@ package agent
 import (
 	"crypto/sha256"
 	"fmt"
+	"net/url"
 	"os"
 	"path/filepath"
 	"sort"
@@ -18,27 +19,28 @@ const (
 )
 
 type Config struct {
-	ControlPlaneURL    string
-	ControlPlaneCAFile string
-	RegistrationToken  string
-	AgentAuthToken     string
-	AgentAuthTokenFile string
-	BootstrapProjectID string
-	ClusterID          string
-	AgentID            string
-	AgentNamespace     string
-	AgentVersion       string
-	KubernetesAPIURL   string
-	KubernetesToken    string
-	KubernetesCA       string
-	NamespaceSelector  string
-	Namespaces         []string
-	ExcludedNamespaces []string
-	ReadSecrets        bool
-	FluxNamespace      string
-	ResyncInterval     time.Duration
-	ReportTimeout      time.Duration
-	HeartbeatInterval  time.Duration
+	ControlPlaneURL          string
+	ControlPlaneEndpointMode string
+	ControlPlaneCAFile       string
+	RegistrationToken        string
+	AgentAuthToken           string
+	AgentAuthTokenFile       string
+	BootstrapProjectID       string
+	ClusterID                string
+	AgentID                  string
+	AgentNamespace           string
+	AgentVersion             string
+	KubernetesAPIURL         string
+	KubernetesToken          string
+	KubernetesCA             string
+	NamespaceSelector        string
+	Namespaces               []string
+	ExcludedNamespaces       []string
+	ReadSecrets              bool
+	FluxNamespace            string
+	ResyncInterval           time.Duration
+	ReportTimeout            time.Duration
+	HeartbeatInterval        time.Duration
 }
 
 // CapabilityConfigFingerprint identifies the configuration that changes
@@ -86,19 +88,20 @@ func ConfigFromEnv() Config {
 		excludedNamespaces = append(excludedNamespaces, strings.TrimSpace(agentNamespace))
 	}
 	return Config{
-		ControlPlaneURL:    getenv("ENVPILOT_CONTROL_PLANE_URL", ""),
-		ControlPlaneCAFile: getenv("ENVPILOT_CONTROL_PLANE_CA_FILE", ""),
-		RegistrationToken:  getenv("ENVPILOT_AGENT_REGISTRATION_TOKEN", ""),
-		AgentAuthToken:     agentAuthToken,
-		AgentAuthTokenFile: agentAuthTokenFile,
-		BootstrapProjectID: getenv("ENVPILOT_BOOTSTRAP_PROJECT_ID", ""),
-		ClusterID:          getenv("ENVPILOT_CLUSTER_ID", "default"),
-		AgentID:            getenv("ENVPILOT_AGENT_ID", hostname()),
-		AgentNamespace:     agentNamespace,
-		AgentVersion:       getenv("ENVPILOT_AGENT_VERSION", "dev"),
-		KubernetesAPIURL:   getenv("ENVPILOT_KUBERNETES_API_URL", inClusterAPIURL()),
-		KubernetesToken:    getenv("ENVPILOT_KUBERNETES_TOKEN_PATH", defaultServiceAccountToken),
-		KubernetesCA:       getenv("ENVPILOT_KUBERNETES_CA_PATH", defaultServiceAccountCA),
+		ControlPlaneURL:          getenv("ENVPILOT_CONTROL_PLANE_URL", ""),
+		ControlPlaneEndpointMode: strings.TrimSpace(getenv("ENVPILOT_CONTROL_PLANE_ENDPOINT_MODE", "sameCluster")),
+		ControlPlaneCAFile:       getenv("ENVPILOT_CONTROL_PLANE_CA_FILE", ""),
+		RegistrationToken:        getenv("ENVPILOT_AGENT_REGISTRATION_TOKEN", ""),
+		AgentAuthToken:           agentAuthToken,
+		AgentAuthTokenFile:       agentAuthTokenFile,
+		BootstrapProjectID:       getenv("ENVPILOT_BOOTSTRAP_PROJECT_ID", ""),
+		ClusterID:                getenv("ENVPILOT_CLUSTER_ID", "default"),
+		AgentID:                  getenv("ENVPILOT_AGENT_ID", hostname()),
+		AgentNamespace:           agentNamespace,
+		AgentVersion:             getenv("ENVPILOT_AGENT_VERSION", "dev"),
+		KubernetesAPIURL:         getenv("ENVPILOT_KUBERNETES_API_URL", inClusterAPIURL()),
+		KubernetesToken:          getenv("ENVPILOT_KUBERNETES_TOKEN_PATH", defaultServiceAccountToken),
+		KubernetesCA:             getenv("ENVPILOT_KUBERNETES_CA_PATH", defaultServiceAccountCA),
 		// An empty selector intentionally means all namespaces. Do not use
 		// getenv here because it treats an explicitly empty environment value as
 		// absent and would silently restore the legacy EnvPilot-only selector.
@@ -116,6 +119,9 @@ func ConfigFromEnv() Config {
 func (c Config) Validate() error {
 	if strings.TrimSpace(c.ControlPlaneURL) == "" {
 		return fmt.Errorf("ENVPILOT_CONTROL_PLANE_URL is required")
+	}
+	if err := ValidateControlPlaneEndpoint(c.ControlPlaneURL, c.ControlPlaneEndpointMode); err != nil {
+		return err
 	}
 	if strings.TrimSpace(c.ControlPlaneCAFile) != "" {
 		if _, err := NewControlPlaneHTTPClient(c.ReportTimeout, c.ControlPlaneCAFile); err != nil {
@@ -142,6 +148,31 @@ func (c Config) Validate() error {
 	}
 	if c.HeartbeatInterval <= 0 {
 		return fmt.Errorf("heartbeat interval must be positive")
+	}
+	return nil
+}
+
+// validateControlPlaneEndpoint rejects host-only and cluster-local addresses
+// only when the chart declares a remote deployment. Same-cluster Agents use
+// Kubernetes Service DNS and are intentionally allowed to do so.
+func ValidateControlPlaneEndpoint(rawURL, endpointMode string) error {
+	mode := strings.ToLower(strings.TrimSpace(endpointMode))
+	if mode == "" {
+		mode = "samecluster"
+	}
+	if mode != "samecluster" && mode != "remote" {
+		return fmt.Errorf("ENVPILOT_CONTROL_PLANE_ENDPOINT_MODE must be sameCluster or remote")
+	}
+	parsed, err := url.Parse(strings.TrimSpace(rawURL))
+	if err != nil || (parsed.Scheme != "http" && parsed.Scheme != "https") || parsed.Hostname() == "" {
+		return fmt.Errorf("ENVPILOT_CONTROL_PLANE_URL must be an HTTP(S) URL")
+	}
+	if mode != "remote" {
+		return nil
+	}
+	host := strings.ToLower(strings.TrimSpace(parsed.Hostname()))
+	if host == "localhost" || host == "127.0.0.1" || host == "::1" || host == "envpilot.local" || host == "host.minikube.internal" || strings.HasSuffix(host, ".svc") || strings.Contains(host, ".svc.") {
+		return fmt.Errorf("remote ENVPILOT_CONTROL_PLANE_URL must be target-pod-reachable, not host-local or Kubernetes Service DNS")
 	}
 	return nil
 }
