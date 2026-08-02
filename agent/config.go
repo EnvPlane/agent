@@ -189,6 +189,20 @@ func (c Config) PersistAgentAuthToken(token string) error {
 	return os.WriteFile(path, []byte(token+"\n"), 0o600)
 }
 
+// ClearPersistedAgentAuthToken drops only the runtime credential from the
+// writable auth volume. The bootstrap registration token remains mounted from
+// the chart-managed Secret and is never copied into agent state.
+func (c Config) ClearPersistedAgentAuthToken() error {
+	path := strings.TrimSpace(c.AgentAuthTokenFile)
+	if path == "" {
+		return nil
+	}
+	if err := os.MkdirAll(filepath.Dir(path), 0o700); err != nil {
+		return err
+	}
+	return os.WriteFile(path, nil, 0o600)
+}
+
 func readTokenFile(path string) string {
 	path = strings.TrimSpace(path)
 	if path == "" {

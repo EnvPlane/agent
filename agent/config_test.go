@@ -143,6 +143,20 @@ func TestPersistAgentAuthTokenWritesCredentialFile(t *testing.T) {
 	}
 }
 
+func TestClearPersistedAgentAuthTokenDropsOnlyRuntimeCredential(t *testing.T) {
+	tokenPath := filepath.Join(t.TempDir(), "credentials", "agent-auth-token")
+	cfg := Config{AgentAuthTokenFile: tokenPath}
+	if err := cfg.PersistAgentAuthToken("issued-agent-auth-token"); err != nil {
+		t.Fatalf("persist agent auth token: %v", err)
+	}
+	if err := cfg.ClearPersistedAgentAuthToken(); err != nil {
+		t.Fatalf("clear agent auth token: %v", err)
+	}
+	if got := readTokenFile(tokenPath); got != "" {
+		t.Fatalf("persisted agent auth after clear = %q, want empty", got)
+	}
+}
+
 func TestCapabilityConfigFingerprintChangesOnlyForDiscoveryConfiguration(t *testing.T) {
 	base := Config{
 		NamespaceSelector:  "app.kubernetes.io/managed-by=envpilot",

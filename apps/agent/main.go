@@ -151,6 +151,24 @@ func runHeartbeat(ctx context.Context, cfg clusteragent.Config, reporter *cluste
 				continue
 			}
 			if err := reporter.ReportHeartbeat(ctx, cfg, capabilities, "online", nil); err != nil {
+				if isFixtureIdentityReissuedError(err) {
+					// The control plane re-opened the explicit E2E fixture's hashed
+					// registration claim. Drop only the persisted runtime token and
+					// immediately re-register from the mounted Secret; no operator
+					// edit or raw-token persistence is needed.
+					if clearErr := cfg.ClearPersistedAgentAuthToken(); clearErr != nil {
+						logger.Error("clear stale agent auth token", "error", clearErr)
+						continue
+					}
+					cfg.AgentAuthToken = ""
+					cfg, err = ensureRuntimeAuth(ctx, cfg, reporter, capabilities, logger)
+					if err != nil {
+						logger.Error("agent fixture identity recovery registration failed", "cluster_id", cfg.ClusterID, "agent_id", cfg.AgentID, "error", err)
+						continue
+					}
+					logger.Info("agent fixture identity recovered", "cluster_id", cfg.ClusterID, "agent_id", cfg.AgentID)
+					continue
+				}
 				logger.Error("agent heartbeat failed", "cluster_id", cfg.ClusterID, "agent_id", cfg.AgentID, "error", err)
 			}
 			if err := runResourceScanTick(ctx, cfg, reporter, source, logger); err != nil {
@@ -158,6 +176,14 @@ func runHeartbeat(ctx context.Context, cfg clusteragent.Config, reporter *cluste
 			}
 		}
 	}
+}
+
+func isFixtureIdentityReissuedError(err error) bool {
+	if err == nil {
+		return false
+	}
+	message := strings.ToLower(err.Error())
+	return strings.Contains(message, "fixture_identity_reissued") || strings.Contains(message, "fixture agent identity was reissued")
 }
 
 func runResourceScanTick(ctx context.Context, cfg clusteragent.Config, reporter *clusteragent.HTTPStatusReporter, source *clusteragent.KubernetesNamespaceSource, logger *slog.Logger) error {
