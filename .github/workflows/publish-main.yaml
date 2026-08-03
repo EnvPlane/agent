@@ -91,6 +91,8 @@ jobs:
           platforms: linux/amd64,linux/arm64
           tags: ${{ steps.metadata.outputs.tags }}
           labels: ${{ steps.metadata.outputs.labels }}
+          cache-from: type=gha,scope=agent
+          cache-to: type=gha,mode=max,scope=agent
           provenance: mode=max
           sbom: true
       - id: published
