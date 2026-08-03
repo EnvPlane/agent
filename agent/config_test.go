@@ -89,7 +89,7 @@ func TestConfigFromEnvDisablesSecretDiscoveryUnlessExplicitlyEnabled(t *testing.
 
 func TestConfigRejectsHostLocalRemoteControlPlaneEndpoint(t *testing.T) {
 	cfg := Config{
-		ControlPlaneURL:          "http://host.minikube.internal:18080",
+		ControlPlaneURL:          "https://host.minikube.internal:18080",
 		ControlPlaneEndpointMode: "remote",
 		RegistrationToken:        "registration-token",
 		ClusterID:                "remote-cluster",
@@ -101,6 +101,27 @@ func TestConfigRejectsHostLocalRemoteControlPlaneEndpoint(t *testing.T) {
 	}
 	if err := cfg.Validate(); err == nil || !strings.Contains(err.Error(), "target-pod-reachable") {
 		t.Fatalf("remote host-local endpoint error=%v", err)
+	}
+}
+
+func TestConfigRequiresStableHTTPSForRemoteControlPlaneEndpoint(t *testing.T) {
+	cfg := Config{
+		ControlPlaneURL:          "http://api.remote.example",
+		ControlPlaneEndpointMode: "remote",
+		RegistrationToken:        "registration-token",
+		ClusterID:                "remote-cluster",
+		AgentID:                  "remote-agent",
+		KubernetesAPIURL:         "https://kubernetes.example",
+		ResyncInterval:           time.Second,
+		ReportTimeout:            time.Second,
+		HeartbeatInterval:        time.Second,
+	}
+	if err := cfg.Validate(); err == nil || !strings.Contains(err.Error(), "stable HTTPS") {
+		t.Fatalf("remote HTTP endpoint error=%v", err)
+	}
+	cfg.ControlPlaneURL = "https://api.remote.example"
+	if err := cfg.Validate(); err != nil {
+		t.Fatalf("stable remote HTTPS endpoint must be valid: %v", err)
 	}
 }
 
