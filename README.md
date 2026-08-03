@@ -22,4 +22,8 @@ This repository was split from:
 container image. It supports `agent` (the default), `agent-install-check`, and
 `agent-connectivity-check`. The connectivity check probes only
 `/api/v1/health` from the Agent image and never consumes a bootstrap token; the
-generated bootstrap instruction uses it before Helm installation.
+RemoteCluster reconciliation runs that same check as an init-container from the
+target Pod before registration. For API-managed remote targets, operators must
+not install this chart or pass tokens manually: the management control plane
+selects the signed chart/image compatibility set and mounts a one-time Secret.
+See the [remote-cluster guide](https://github.com/envpilot/deploy/blob/main/docs/remote-clusters.md).
