@@ -135,16 +135,30 @@ type AgentRegistrationResponse struct {
 }
 
 type AgentHeartbeatRequest struct {
-	ProjectID                string                   `json:"projectId,omitempty"`
-	ClusterID                string                   `json:"clusterId"`
-	AgentID                  string                   `json:"agentId"`
-	AgentAuthToken           string                   `json:"agentAuthToken,omitempty"`
-	AgentVersion             string                   `json:"agentVersion,omitempty"`
-	KubernetesVersion        string                   `json:"kubernetesVersion,omitempty"`
-	Capabilities             []string                 `json:"capabilities,omitempty"`
-	CapabilityReport         *ClusterCapabilityReport `json:"capabilityReport,omitempty"`
-	HeartbeatIntervalSeconds int                      `json:"heartbeatIntervalSeconds,omitempty"`
-	Status                   string                   `json:"status,omitempty"`
-	Error                    string                   `json:"error,omitempty"`
-	ObservedAt               time.Time                `json:"observedAt,omitempty"`
+	ProjectID                string                       `json:"projectId,omitempty"`
+	ClusterID                string                       `json:"clusterId"`
+	AgentID                  string                       `json:"agentId"`
+	AgentAuthToken           string                       `json:"agentAuthToken,omitempty"`
+	AgentVersion             string                       `json:"agentVersion,omitempty"`
+	KubernetesVersion        string                       `json:"kubernetesVersion,omitempty"`
+	Capabilities             []string                     `json:"capabilities,omitempty"`
+	CapabilityReport         *ClusterCapabilityReport     `json:"capabilityReport,omitempty"`
+	HeartbeatIntervalSeconds int                          `json:"heartbeatIntervalSeconds,omitempty"`
+	Status                   string                       `json:"status,omitempty"`
+	Error                    string                       `json:"error,omitempty"`
+	EndpointPreflight        *ManagementEndpointPreflight `json:"endpoint_preflight,omitempty"`
+	ObservedAt               time.Time                    `json:"observedAt,omitempty"`
+}
+
+// ManagementEndpointPreflight deliberately mirrors the control-plane safe
+// wire contract. No URLs, credentials, CA bytes or response bodies are sent.
+type ManagementEndpointPreflight struct {
+	Generation      int64      `json:"generation"`
+	Code            string     `json:"code"`
+	DNSResolved     bool       `json:"dns_resolved"`
+	TCPConnected    bool       `json:"tcp_connected"`
+	TLSVerified     bool       `json:"tls_verified"`
+	HealthReachable bool       `json:"health_reachable"`
+	RuntimeAccess   bool       `json:"runtime_access"`
+	CheckedAt       *time.Time `json:"checked_at,omitempty"`
 }

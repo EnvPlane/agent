@@ -4,12 +4,16 @@ import (
 	"context"
 	"crypto/tls"
 	"crypto/x509"
+	"errors"
 	"fmt"
+	"net"
 	"net/http"
 	"net/url"
 	"os"
 	"strings"
 	"time"
+
+	"envpilot/internal/domain"
 )
 
 // CheckControlPlaneHealth verifies the endpoint used by an Agent before it
@@ -54,6 +58,10 @@ func CheckControlPlaneHealthWithCAFile(ctx context.Context, controlPlaneURL stri
 }
 
 func NewControlPlaneHTTPClient(timeout time.Duration, caFile string) (*http.Client, error) {
+	return NewControlPlaneHTTPClientWithTLS(timeout, caFile, "")
+}
+
+func NewControlPlaneHTTPClientWithTLS(timeout time.Duration, caFile, serverName string) (*http.Client, error) {
 	if timeout <= 0 {
 		timeout = 10 * time.Second
 	}
@@ -70,7 +78,66 @@ func NewControlPlaneHTTPClient(timeout time.Duration, caFile string) (*http.Clie
 		if !roots.AppendCertsFromPEM(pem) {
 			return nil, fmt.Errorf("control-plane CA file contains no certificates")
 		}
-		transport.TLSClientConfig = &tls.Config{RootCAs: roots, MinVersion: tls.VersionTLS12}
+		transport.TLSClientConfig = &tls.Config{RootCAs: roots, ServerName: strings.TrimSpace(serverName), MinVersion: tls.VersionTLS12}
+	} else if strings.TrimSpace(serverName) != "" {
+		transport.TLSClientConfig = &tls.Config{ServerName: strings.TrimSpace(serverName), MinVersion: tls.VersionTLS12}
 	}
 	return &http.Client{Timeout: timeout, Transport: transport}, nil
+}
+
+// ProbeManagementEndpoint executes the bounded target-Pod probe after Agent
+// authentication exists. Its return type is deliberately safe to persist.
+func ProbeManagementEndpoint(ctx context.Context, cfg Config, reporter *HTTPStatusReporter, generation int64) *domain.ManagementEndpointPreflight {
+	checked := time.Now().UTC()
+	report := &domain.ManagementEndpointPreflight{Generation: generation, Code: "dns_failed", CheckedAt: &checked}
+	client, err := NewControlPlaneHTTPClientWithTLS(cfg.ReportTimeout, cfg.ControlPlaneCAFile, cfg.ControlPlaneTLSServerName)
+	if err != nil {
+		report.Code = "tls_ca_failed"
+		return report
+	}
+	request, err := http.NewRequestWithContext(ctx, http.MethodGet, strings.TrimRight(cfg.ControlPlaneURL, "/")+"/api/v1/health", nil)
+	if err != nil {
+		return report
+	}
+	response, err := client.Do(request)
+	if err != nil {
+		report.Code = classifyEndpointProbeError(err)
+		return report
+	}
+	defer response.Body.Close()
+	report.DNSResolved, report.TCPConnected = true, true
+	if strings.HasPrefix(strings.ToLower(cfg.ControlPlaneURL), "https://") {
+		report.TLSVerified = true
+	}
+	if response.StatusCode < 200 || response.StatusCode >= 300 {
+		report.Code = "endpoint_unhealthy"
+		return report
+	}
+	report.HealthReachable = true
+	if err := reporter.CheckRuntimeAccess(ctx, cfg); err != nil {
+		report.Code = "runtime_auth_failed"
+		return report
+	}
+	report.RuntimeAccess = true
+	report.Code = "passed"
+	return report
+}
+
+func classifyEndpointProbeError(err error) string {
+	var dnsErr *net.DNSError
+	if errors.As(err, &dnsErr) {
+		return "dns_failed"
+	}
+	var unknownCA x509.UnknownAuthorityError
+	if errors.As(err, &unknownCA) {
+		return "tls_ca_failed"
+	}
+	message := strings.ToLower(err.Error())
+	if strings.Contains(message, "certificate") && (strings.Contains(message, "not valid for") || strings.Contains(message, "server name")) {
+		return "tls_server_name_mismatch"
+	}
+	if strings.Contains(message, "certificate") || strings.Contains(message, "tls") {
+		return "tls_ca_failed"
+	}
+	return "tcp_failed"
 }

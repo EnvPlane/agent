@@ -19,28 +19,30 @@ const (
 )
 
 type Config struct {
-	ControlPlaneURL          string
-	ControlPlaneEndpointMode string
-	ControlPlaneCAFile       string
-	RegistrationToken        string
-	AgentAuthToken           string
-	AgentAuthTokenFile       string
-	BootstrapProjectID       string
-	ClusterID                string
-	AgentID                  string
-	AgentNamespace           string
-	AgentVersion             string
-	KubernetesAPIURL         string
-	KubernetesToken          string
-	KubernetesCA             string
-	NamespaceSelector        string
-	Namespaces               []string
-	ExcludedNamespaces       []string
-	ReadSecrets              bool
-	FluxNamespace            string
-	ResyncInterval           time.Duration
-	ReportTimeout            time.Duration
-	HeartbeatInterval        time.Duration
+	ControlPlaneURL           string
+	ControlPlaneEndpointMode  string
+	ControlPlaneCAFile        string
+	ControlPlaneTLSServerName string
+	RegistrationToken         string
+	AgentAuthToken            string
+	AgentAuthTokenFile        string
+	BootstrapProjectID        string
+	ClusterID                 string
+	AgentID                   string
+	AgentNamespace            string
+	AgentVersion              string
+	KubernetesAPIURL          string
+	KubernetesToken           string
+	KubernetesCA              string
+	NamespaceSelector         string
+	Namespaces                []string
+	ExcludedNamespaces        []string
+	ReadSecrets               bool
+	FluxNamespace             string
+	ResyncInterval            time.Duration
+	ReportTimeout             time.Duration
+	HeartbeatInterval         time.Duration
+	RemoteGeneration          int64
 }
 
 // CapabilityConfigFingerprint identifies the configuration that changes
@@ -88,20 +90,21 @@ func ConfigFromEnv() Config {
 		excludedNamespaces = append(excludedNamespaces, strings.TrimSpace(agentNamespace))
 	}
 	return Config{
-		ControlPlaneURL:          getenv("ENVPILOT_CONTROL_PLANE_URL", ""),
-		ControlPlaneEndpointMode: strings.TrimSpace(getenv("ENVPILOT_CONTROL_PLANE_ENDPOINT_MODE", "sameCluster")),
-		ControlPlaneCAFile:       getenv("ENVPILOT_CONTROL_PLANE_CA_FILE", ""),
-		RegistrationToken:        getenv("ENVPILOT_AGENT_REGISTRATION_TOKEN", ""),
-		AgentAuthToken:           agentAuthToken,
-		AgentAuthTokenFile:       agentAuthTokenFile,
-		BootstrapProjectID:       getenv("ENVPILOT_BOOTSTRAP_PROJECT_ID", ""),
-		ClusterID:                getenv("ENVPILOT_CLUSTER_ID", "default"),
-		AgentID:                  getenv("ENVPILOT_AGENT_ID", hostname()),
-		AgentNamespace:           agentNamespace,
-		AgentVersion:             getenv("ENVPILOT_AGENT_VERSION", "dev"),
-		KubernetesAPIURL:         getenv("ENVPILOT_KUBERNETES_API_URL", inClusterAPIURL()),
-		KubernetesToken:          getenv("ENVPILOT_KUBERNETES_TOKEN_PATH", defaultServiceAccountToken),
-		KubernetesCA:             getenv("ENVPILOT_KUBERNETES_CA_PATH", defaultServiceAccountCA),
+		ControlPlaneURL:           getenv("ENVPILOT_CONTROL_PLANE_URL", ""),
+		ControlPlaneEndpointMode:  strings.TrimSpace(getenv("ENVPILOT_CONTROL_PLANE_ENDPOINT_MODE", "sameCluster")),
+		ControlPlaneCAFile:        getenv("ENVPILOT_CONTROL_PLANE_CA_FILE", ""),
+		ControlPlaneTLSServerName: getenv("ENVPILOT_CONTROL_PLANE_TLS_SERVER_NAME", ""),
+		RegistrationToken:         getenv("ENVPILOT_AGENT_REGISTRATION_TOKEN", ""),
+		AgentAuthToken:            agentAuthToken,
+		AgentAuthTokenFile:        agentAuthTokenFile,
+		BootstrapProjectID:        getenv("ENVPILOT_BOOTSTRAP_PROJECT_ID", ""),
+		ClusterID:                 getenv("ENVPILOT_CLUSTER_ID", "default"),
+		AgentID:                   getenv("ENVPILOT_AGENT_ID", hostname()),
+		AgentNamespace:            agentNamespace,
+		AgentVersion:              getenv("ENVPILOT_AGENT_VERSION", "dev"),
+		KubernetesAPIURL:          getenv("ENVPILOT_KUBERNETES_API_URL", inClusterAPIURL()),
+		KubernetesToken:           getenv("ENVPILOT_KUBERNETES_TOKEN_PATH", defaultServiceAccountToken),
+		KubernetesCA:              getenv("ENVPILOT_KUBERNETES_CA_PATH", defaultServiceAccountCA),
 		// An empty selector intentionally means all namespaces. Do not use
 		// getenv here because it treats an explicitly empty environment value as
 		// absent and would silently restore the legacy EnvPilot-only selector.
@@ -113,6 +116,7 @@ func ConfigFromEnv() Config {
 		ResyncInterval:     time.Duration(getenvInt("ENVPILOT_AGENT_RESYNC_SECONDS", 30)) * time.Second,
 		ReportTimeout:      time.Duration(getenvInt("ENVPILOT_AGENT_REPORT_TIMEOUT_SECONDS", 10)) * time.Second,
 		HeartbeatInterval:  time.Duration(getenvInt("ENVPILOT_AGENT_HEARTBEAT_SECONDS", 30)) * time.Second,
+		RemoteGeneration:   int64(getenvInt("ENVPILOT_REMOTE_GENERATION", 0)),
 	}
 }
 
@@ -124,7 +128,7 @@ func (c Config) Validate() error {
 		return err
 	}
 	if strings.TrimSpace(c.ControlPlaneCAFile) != "" {
-		if _, err := NewControlPlaneHTTPClient(c.ReportTimeout, c.ControlPlaneCAFile); err != nil {
+		if _, err := NewControlPlaneHTTPClientWithTLS(c.ReportTimeout, c.ControlPlaneCAFile, c.ControlPlaneTLSServerName); err != nil {
 			return fmt.Errorf("invalid ENVPILOT_CONTROL_PLANE_CA_FILE: %w", err)
 		}
 	}

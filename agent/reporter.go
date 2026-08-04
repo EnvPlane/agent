@@ -47,10 +47,14 @@ func NewHTTPStatusReporterForAgent(baseURL, token, clusterID, agentID string, ti
 }
 
 func NewHTTPStatusReporterForAgentWithCAFile(baseURL, token, clusterID, agentID string, timeout time.Duration, caFile string) *HTTPStatusReporter {
+	return NewHTTPStatusReporterForAgentWithTLS(baseURL, token, clusterID, agentID, timeout, caFile, "")
+}
+
+func NewHTTPStatusReporterForAgentWithTLS(baseURL, token, clusterID, agentID string, timeout time.Duration, caFile, serverName string) *HTTPStatusReporter {
 	if timeout <= 0 {
 		timeout = 10 * time.Second
 	}
-	client, err := NewControlPlaneHTTPClient(timeout, caFile)
+	client, err := NewControlPlaneHTTPClientWithTLS(timeout, caFile, serverName)
 	if err != nil {
 		// Preserve the reporter API for callers that report configuration errors
 		// through their normal registration/heartbeat path.
@@ -185,6 +189,10 @@ func (r *HTTPStatusReporter) RegisterAgent(ctx context.Context, cfg Config, capa
 }
 
 func (r *HTTPStatusReporter) ReportHeartbeat(ctx context.Context, cfg Config, capabilities ClusterCapabilities, status string, statusErr error) error {
+	return r.ReportHeartbeatWithEndpointPreflight(ctx, cfg, capabilities, status, statusErr, nil)
+}
+
+func (r *HTTPStatusReporter) ReportHeartbeatWithEndpointPreflight(ctx context.Context, cfg Config, capabilities ClusterCapabilities, status string, statusErr error, preflight *domain.ManagementEndpointPreflight) error {
 	errorMessage := ""
 	if statusErr != nil {
 		errorMessage = statusErr.Error()
@@ -203,9 +211,33 @@ func (r *HTTPStatusReporter) ReportHeartbeat(ctx context.Context, cfg Config, ca
 		HeartbeatIntervalSeconds: int(cfg.HeartbeatInterval.Seconds()),
 		Status:                   status,
 		Error:                    errorMessage,
+		EndpointPreflight:        preflight,
 		ObservedAt:               observedAt,
 	}
 	return r.postJSON(ctx, "/api/v1/agents/heartbeat", payload, "report heartbeat")
+}
+
+// CheckRuntimeAccess is the authenticated final leg of the target-Pod
+// preflight. It consumes neither registration tokens nor response bodies.
+func (r *HTTPStatusReporter) CheckRuntimeAccess(ctx context.Context, cfg Config) error {
+	query := url.Values{}
+	query.Set("projectId", cfg.BootstrapProjectID)
+	query.Set("clusterId", cfg.ClusterID)
+	query.Set("agentId", cfg.AgentID)
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, r.baseURL+"/api/v1/agents/runtime-access?"+query.Encode(), nil)
+	if err != nil {
+		return err
+	}
+	req.Header.Set("Authorization", "Bearer "+cfg.AgentAuthToken)
+	resp, err := r.client.Do(req)
+	if err != nil {
+		return err
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusNoContent {
+		return fmt.Errorf("runtime access denied")
+	}
+	return nil
 }
 
 func capabilityReportForPublish(cfg Config, capabilities ClusterCapabilities, observedAt time.Time) domain.ClusterCapabilityReport {

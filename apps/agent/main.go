@@ -43,7 +43,7 @@ func runAgent(logger *slog.Logger) {
 		logger.Error("failed to initialise kubernetes namespace source", "error", err)
 		os.Exit(1)
 	}
-	reporter := clusteragent.NewHTTPStatusReporterForAgentWithCAFile(cfg.ControlPlaneURL, "", cfg.ClusterID, cfg.AgentID, cfg.ReportTimeout, cfg.ControlPlaneCAFile)
+	reporter := clusteragent.NewHTTPStatusReporterForAgentWithTLS(cfg.ControlPlaneURL, "", cfg.ClusterID, cfg.AgentID, cfg.ReportTimeout, cfg.ControlPlaneCAFile, cfg.ControlPlaneTLSServerName)
 	watcher := clusteragent.NewNamespaceWatcher(source, reporter, cfg.ResyncInterval, logger)
 	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
 	defer stop()
@@ -85,13 +85,19 @@ func runAgentInstallCheck(logger *slog.Logger) {
 		logger.Error("cluster capability discovery failed", "error", err)
 		os.Exit(1)
 	}
-	reporter := clusteragent.NewHTTPStatusReporterForAgentWithCAFile(cfg.ControlPlaneURL, "", cfg.ClusterID, cfg.AgentID, cfg.ReportTimeout, cfg.ControlPlaneCAFile)
+	reporter := clusteragent.NewHTTPStatusReporterForAgentWithTLS(cfg.ControlPlaneURL, "", cfg.ClusterID, cfg.AgentID, cfg.ReportTimeout, cfg.ControlPlaneCAFile, cfg.ControlPlaneTLSServerName)
 	cfg, err = ensureRuntimeAuth(ctx, cfg, reporter, capabilities, logger)
 	if err != nil {
 		logger.Error("agent registration failed", "error", err)
 		os.Exit(1)
 	}
-	if err := reporter.ReportHeartbeat(ctx, cfg, capabilities, "online", nil); err != nil {
+	preflight := clusteragent.ProbeManagementEndpoint(ctx, cfg, reporter, cfg.RemoteGeneration)
+	status := "online"
+	var statusErr error
+	if preflight.Code != "passed" {
+		status, statusErr = "degraded", fmt.Errorf("management endpoint preflight failed: %s", preflight.Code)
+	}
+	if err := reporter.ReportHeartbeatWithEndpointPreflight(ctx, cfg, capabilities, status, statusErr, preflight); err != nil {
 		logger.Error("agent heartbeat report failed", "error", err)
 		os.Exit(1)
 	}
@@ -150,7 +156,13 @@ func runHeartbeat(ctx context.Context, cfg clusteragent.Config, reporter *cluste
 				logger.Error("cluster capability discovery failed", "error", err)
 				continue
 			}
-			if err := reporter.ReportHeartbeat(ctx, cfg, capabilities, "online", nil); err != nil {
+			preflight := clusteragent.ProbeManagementEndpoint(ctx, cfg, reporter, cfg.RemoteGeneration)
+			status := "online"
+			var statusErr error
+			if preflight.Code != "passed" {
+				status, statusErr = "degraded", fmt.Errorf("management endpoint preflight failed: %s", preflight.Code)
+			}
+			if err := reporter.ReportHeartbeatWithEndpointPreflight(ctx, cfg, capabilities, status, statusErr, preflight); err != nil {
 				if isFixtureIdentityReissuedError(err) {
 					// The control plane re-opened the explicit E2E fixture's hashed
 					// registration claim. Drop only the persisted runtime token and
@@ -171,8 +183,10 @@ func runHeartbeat(ctx context.Context, cfg clusteragent.Config, reporter *cluste
 				}
 				logger.Error("agent heartbeat failed", "cluster_id", cfg.ClusterID, "agent_id", cfg.AgentID, "error", err)
 			}
-			if err := runResourceScanTick(ctx, cfg, reporter, source, logger); err != nil {
-				logger.Error("agent resource scan dispatch failed", "cluster_id", cfg.ClusterID, "agent_id", cfg.AgentID, "error", err)
+			if preflight.Code == "passed" {
+				if err := runResourceScanTick(ctx, cfg, reporter, source, logger); err != nil {
+					logger.Error("agent resource scan dispatch failed", "cluster_id", cfg.ClusterID, "agent_id", cfg.AgentID, "error", err)
+				}
 			}
 		}
 	}
