@@ -5,7 +5,7 @@ import (
 	"strings"
 	"testing"
 
-	"envpilot/internal/domain"
+	"github.com/envpilot/agent/internal/domain"
 )
 
 func TestFluxStatusCollectorReportsReadyReconciliation(t *testing.T) {

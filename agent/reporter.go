@@ -12,7 +12,7 @@ import (
 	"strings"
 	"time"
 
-	"envpilot/internal/domain"
+	"github.com/envpilot/agent/internal/domain"
 )
 
 type StatusReporter interface {

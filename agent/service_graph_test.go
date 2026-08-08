@@ -3,7 +3,7 @@ package agent
 import (
 	"testing"
 
-	"envpilot/internal/domain"
+	"github.com/envpilot/agent/internal/domain"
 )
 
 func TestBuildServiceGraphMapsServicesIngressAndEnvDependencies(t *testing.T) {

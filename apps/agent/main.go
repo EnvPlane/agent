@@ -10,7 +10,7 @@ import (
 	"syscall"
 	"time"
 
-	clusteragent "envpilot/agent"
+	clusteragent "github.com/envpilot/agent/agent"
 )
 
 func main() {

@@ -7,7 +7,7 @@ import (
 	"strings"
 	"time"
 
-	"envpilot/internal/domain"
+	"github.com/envpilot/agent/internal/domain"
 )
 
 const environmentIDLabel = "envpilot.io/environment-id"

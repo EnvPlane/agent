@@ -10,7 +10,7 @@ import (
 	"sort"
 	"strings"
 
-	"envpilot/internal/domain"
+	"github.com/envpilot/agent/internal/domain"
 )
 
 type ResourceDiscoveryScanner struct {

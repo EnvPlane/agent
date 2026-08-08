@@ -6,7 +6,7 @@ import (
 	"testing"
 	"time"
 
-	"envpilot/internal/domain"
+	"github.com/envpilot/agent/internal/domain"
 )
 
 func TestNamespaceWatcherReportsEnvNamespaceStatus(t *testing.T) {
