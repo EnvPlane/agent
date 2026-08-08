@@ -9,7 +9,7 @@ import (
 	"sort"
 	"strings"
 
-	"github.com/envpilot/agent/internal/domain"
+	"github.com/envpilot/contracts/domain"
 )
 
 type ClusterCapabilities struct {

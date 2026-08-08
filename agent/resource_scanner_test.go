@@ -8,7 +8,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/envpilot/agent/internal/domain"
+	"github.com/envpilot/contracts/domain"
 )
 
 func TestResourceDiscoveryScannerFluxSourceMapping(t *testing.T) {

@@ -13,7 +13,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/envpilot/agent/internal/domain"
+	"github.com/envpilot/contracts/domain"
 )
 
 // CheckControlPlaneHealth verifies the endpoint used by an Agent before it
