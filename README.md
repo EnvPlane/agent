@@ -1,29 +1,42 @@
-# EnvPilot Agent
+# EnvPlane Agent
 
-Cluster-side observer for EnvPilot.
+Cluster-side observability and reporting agent for [EnvPlane](https://envplane.dev).
+It watches a target Kubernetes cluster, collects operational state, and reports
+bounded observations to the EnvPlane control plane.
 
-## Scope
+## Responsibilities
 
-- Agent heartbeat.
-- Flux status collection.
-- Kubernetes event, deployment, resource, and service graph collection.
-- Reporting observed cluster state back to the control plane.
-
-## Source Origin
-
-This repository was split from:
-
-- `agent`
-- shared `internal/domain`
+- Maintain connectivity and heartbeat status.
+- Collect Kubernetes events, deployments, resources, service relationships, and Flux CD state.
+- Discover service environments and deployment capabilities.
+- Report observations without exposing raw cluster credentials or secrets.
 
 ## Runtime
 
-`apps/agent` provides the standalone `envpilot-agent` binary used by the
-container image. It supports `agent` (the default), `agent-install-check`, and
-`agent-connectivity-check`. The connectivity check probes only
-`/api/v1/health` from the Agent image and never consumes a bootstrap token; the
-RemoteCluster reconciliation runs that same check as an init-container from the
-target Pod before registration. For API-managed remote targets, operators must
-not install this chart or pass tokens manually: the management control plane
-selects the signed chart/image compatibility set and mounts a one-time Secret.
-See the [remote-cluster guide](https://github.com/envpilot/deploy/blob/main/docs/remote-clusters.md).
+The container supports `agent`, `agent-install-check`, and
+`agent-connectivity-check`. The connectivity check validates the control-plane
+health endpoint without consuming a bootstrap token. API-managed remote-cluster
+installation and rotation are controlled by the control plane.
+
+## Development
+
+```bash
+go test ./...
+go build ./...
+docker build -t envplane-agent:dev .
+```
+
+## Related components
+
+- [Control Plane](https://github.com/EnvPlane/control-plane)
+- [Contracts](https://github.com/EnvPlane/contracts)
+- [Deploy](https://github.com/EnvPlane/deploy)
+
+## Security
+
+Do not commit kubeconfigs, bootstrap tokens, cloud credentials, or production
+values. Use short-lived credentials and managed Kubernetes Secrets.
+
+## Status
+
+Private EnvPlane platform component under active development.
