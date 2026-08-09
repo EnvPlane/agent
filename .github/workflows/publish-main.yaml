@@ -18,7 +18,7 @@ concurrency:
 
 jobs:
   publish:
-    if: github.repository == 'envpilot/agent' && (github.event_name == 'push' || (github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main'))
+    if: github.repository == 'EnvPlane/agent' && (github.event_name == 'push' || (github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main'))
     runs-on: ubuntu-latest
     outputs:
       component: ${{ steps.published.outputs.component }}
@@ -62,7 +62,7 @@ jobs:
           git config --global url."https://x-access-token:${SOURCE_TOKEN}@github.com/".insteadOf "https://github.com/"
       - uses: actions/checkout@v5
         with:
-          repository: envpilot/deploy
+          repository: EnvPlane/deploy
           token: ${{ steps.source_read_app.outputs.token || secrets.ENVPILOT_AUTOMATION_PAT }}
           path: deploy
       - uses: actions/setup-go@v5
@@ -82,7 +82,7 @@ jobs:
       - id: metadata
         uses: docker/metadata-action@v5
         with:
-          images: ghcr.io/${{ github.repository_owner }}/agent
+          images: ghcr.io/envpilot/agent
           labels: |
             org.opencontainers.image.source=https://github.com/${{ github.repository }}
             org.opencontainers.image.revision=${{ github.sha }}
@@ -107,7 +107,7 @@ jobs:
         name: Emit immutable image metadata
         env:
           COMPONENT: agent
-          REPOSITORY: ghcr.io/${{ github.repository_owner }}/agent
+          REPOSITORY: ghcr.io/envpilot/agent
           TAG: sha-${{ github.sha }}
           DIGEST: ${{ steps.build.outputs.digest }}
         run: |
