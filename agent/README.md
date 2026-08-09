@@ -1,4 +1,4 @@
-# EnvPilot Agent
+# EnvPlane Agent
 
 Kubernetes cluster agent package.
 

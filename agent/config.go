@@ -107,7 +107,7 @@ func ConfigFromEnv() Config {
 		KubernetesCA:              getenv("ENVPILOT_KUBERNETES_CA_PATH", defaultServiceAccountCA),
 		// An empty selector intentionally means all namespaces. Do not use
 		// getenv here because it treats an explicitly empty environment value as
-		// absent and would silently restore the legacy EnvPilot-only selector.
+		// absent and would silently restore the legacy EnvPlane-only selector.
 		NamespaceSelector:  strings.TrimSpace(os.Getenv("ENVPILOT_WATCH_NAMESPACE_SELECTOR")),
 		Namespaces:         splitCSV(getenv("ENVPILOT_WATCH_NAMESPACES", "")),
 		ExcludedNamespaces: excludedNamespaces,
