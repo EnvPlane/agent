@@ -6,6 +6,7 @@ import (
 	"log/slog"
 	"os"
 	"os/signal"
+	"strconv"
 	"strings"
 	"syscall"
 	"time"
@@ -113,13 +114,45 @@ func runAgentConnectivityCheck(logger *slog.Logger) {
 		logger.Error("agent control-plane connectivity check failed", "error", err)
 		os.Exit(1)
 	}
-	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	policy := clusteragent.ControlPlaneConnectivityRetryPolicy{
+		MaxAttempts:    getenvInt("ENVPILOT_CONTROL_PLANE_CONNECTIVITY_MAX_ATTEMPTS", 12),
+		InitialBackoff: time.Duration(getenvInt("ENVPILOT_CONTROL_PLANE_CONNECTIVITY_INITIAL_BACKOFF_SECONDS", 1)) * time.Second,
+		MaxBackoff:     time.Duration(getenvInt("ENVPILOT_CONTROL_PLANE_CONNECTIVITY_MAX_BACKOFF_SECONDS", 5)) * time.Second,
+	}
+	deadlineSeconds := getenvInt("ENVPILOT_CONTROL_PLANE_CONNECTIVITY_DEADLINE_SECONDS", 120)
+	if deadlineSeconds < 5 {
+		deadlineSeconds = 5
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), time.Duration(deadlineSeconds)*time.Second)
 	defer cancel()
-	if err := clusteragent.CheckControlPlaneHealthWithCAFile(ctx, cfg.ControlPlaneURL, cfg.ReportTimeout, cfg.ControlPlaneCAFile); err != nil {
-		logger.Error("agent control-plane connectivity check failed", "error", err)
+	if err := clusteragent.CheckControlPlaneHealthWithCAFileAndRetry(ctx, cfg.ControlPlaneURL, cfg.ReportTimeout, cfg.ControlPlaneCAFile, policy); err != nil {
+		errMsg := err
+		if errorsIsTimeout(err) {
+			errMsg = fmt.Errorf("control-plane connectivity check timed out before authenticated readiness was reachable: %w", err)
+		}
+		logger.Error("agent control-plane connectivity check failed", "error", errMsg, "retryable", true, "maxAttempts", policy.MaxAttempts)
 		os.Exit(1)
 	}
 	logger.Info("agent control-plane connectivity check completed", "control_plane_url", cfg.ControlPlaneURL)
+}
+
+func errorsIsTimeout(err error) bool {
+	if err == nil {
+		return false
+	}
+	return strings.Contains(strings.ToLower(err.Error()), "timeout") || strings.Contains(strings.ToLower(err.Error()), "context deadline")
+}
+
+func getenvInt(name string, fallback int) int {
+	value := strings.TrimSpace(os.Getenv(name))
+	if value == "" {
+		return fallback
+	}
+	parsed, err := strconv.Atoi(value)
+	if err != nil || parsed <= 0 {
+		return fallback
+	}
+	return parsed
 }
 
 func ensureRuntimeAuth(ctx context.Context, cfg clusteragent.Config, reporter *clusteragent.HTTPStatusReporter, capabilities clusteragent.ClusterCapabilities, logger *slog.Logger) (clusteragent.Config, error) {
