@@ -313,6 +313,9 @@ func (s *KubernetesNamespaceSource) ListNamespaces(ctx context.Context) ([]Names
 }
 
 func (s *KubernetesNamespaceSource) listNamespaces(ctx context.Context) ([]Namespace, []string, error) {
+	if len(s.allowed) > 0 && strings.TrimSpace(s.selector) == "" {
+		return s.listExplicitNamespaces(ctx)
+	}
 	req, err := s.newNamespacesRequest(ctx, false)
 	if err != nil {
 		return nil, nil, err
@@ -345,7 +348,62 @@ func (s *KubernetesNamespaceSource) listNamespaces(ctx context.Context) ([]Names
 	return items, excluded, nil
 }
 
+// listExplicitNamespaces is the namespaced-RBAC discovery path. Kubernetes
+// treats Namespace as a cluster-scoped resource, so a project Agent must not
+// call /api/v1/namespaces when the deployment already supplies a finite
+// allowlist. Reading each named namespace is permitted by a Role in that
+// namespace and keeps project Agents free of ClusterRoles.
+func (s *KubernetesNamespaceSource) listExplicitNamespaces(ctx context.Context) ([]Namespace, []string, error) {
+	names := make([]string, 0, len(s.allowed))
+	for name := range s.allowed {
+		names = append(names, name)
+	}
+	sort.Strings(names)
+	items := make([]Namespace, 0, len(names))
+	excluded := make([]string, 0)
+	for _, name := range names {
+		if s.isExcludedNamespace(name) {
+			excluded = append(excluded, name)
+			continue
+		}
+		endpoint := s.apiURL + "/api/v1/namespaces/" + url.PathEscape(name)
+		req, err := s.newKubernetesGET(ctx, endpoint)
+		if err != nil {
+			return nil, nil, err
+		}
+		resp, err := s.client.Do(req)
+		if err != nil {
+			return nil, nil, err
+		}
+		body, readErr := io.ReadAll(io.LimitReader(resp.Body, 1<<20))
+		resp.Body.Close()
+		if readErr != nil {
+			return nil, nil, fmt.Errorf("read namespace %s: %w", name, readErr)
+		}
+		if resp.StatusCode == http.StatusNotFound {
+			continue
+		}
+		if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+			return nil, nil, kubernetesListError("namespace "+name, resp.StatusCode, body)
+		}
+		var item Namespace
+		if err := json.Unmarshal(body, &item); err != nil {
+			return nil, nil, fmt.Errorf("decode namespace %s: %w", name, err)
+		}
+		if strings.TrimSpace(item.Metadata.Name) == "" {
+			item.Metadata.Name = name
+		}
+		items = append(items, item)
+	}
+	return items, excluded, nil
+}
+
 func (s *KubernetesNamespaceSource) WatchNamespaces(ctx context.Context, handle func(NamespaceEvent) error) error {
+	if len(s.allowed) > 0 && strings.TrimSpace(s.selector) == "" {
+		// Namespace watches require cluster-scope list/watch permissions. The
+		// explicit allowlist is intentionally polled by NamespaceWatcher instead.
+		return nil
+	}
 	req, err := s.newNamespacesRequest(ctx, true)
 	if err != nil {
 		return err

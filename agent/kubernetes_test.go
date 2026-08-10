@@ -74,6 +74,41 @@ func TestKubernetesNamespaceSourceDiscoversPreExistingNamespacesInAllMode(t *tes
 	}
 }
 
+func TestKubernetesNamespaceSourceUsesNamespacedReadsForExplicitAllowlist(t *testing.T) {
+	var paths []string
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		paths = append(paths, r.URL.Path)
+		if r.URL.Path == "/api/v1/namespaces" {
+			http.Error(w, "cluster namespace list must not be used", http.StatusForbidden)
+			return
+		}
+		switch r.URL.Path {
+		case "/api/v1/namespaces/dev-base":
+			_ = json.NewEncoder(w).Encode(Namespace{Metadata: NamespaceMetadata{Name: "dev-base"}, Status: NamespaceStatus{Phase: "Active"}})
+		case "/api/v1/namespaces/shared":
+			_ = json.NewEncoder(w).Encode(Namespace{Metadata: NamespaceMetadata{Name: "shared"}, Status: NamespaceStatus{Phase: "Active"}})
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+	defer server.Close()
+
+	source := NewKubernetesNamespaceSource(server.URL, "kube-token", "", []string{"shared", "dev-base"}, server.Client())
+	items, err := source.ListNamespaces(context.Background())
+	if err != nil {
+		t.Fatalf("list explicit namespaces: %v", err)
+	}
+	if got, want := []string{items[0].Metadata.Name, items[1].Metadata.Name}, []string{"dev-base", "shared"}; !reflect.DeepEqual(got, want) {
+		t.Fatalf("explicit namespaces = %#v want %#v", got, want)
+	}
+	if !reflect.DeepEqual(paths, []string{"/api/v1/namespaces/dev-base", "/api/v1/namespaces/shared"}) {
+		t.Fatalf("namespace paths = %#v", paths)
+	}
+	if err := source.WatchNamespaces(context.Background(), func(NamespaceEvent) error { return nil }); err != nil {
+		t.Fatalf("explicit namespace watch should use polling: %v", err)
+	}
+}
+
 func TestKubernetesNamespaceSourceListsDeploymentsPodsAndIngresses(t *testing.T) {
 	var paths []string
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
