@@ -29,6 +29,33 @@ func TestCheckControlPlaneHealthUsesHealthEndpointWithoutCredentials(t *testing.
 	}
 }
 
+func TestProbeManagementEndpointPassesWithRuntimeAuthWithoutLeakingBootstrapToken(t *testing.T) {
+	const runtimeToken = "runtime-token-for-test"
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/api/v1/health":
+			if r.Header.Get("Authorization") != "" {
+				t.Fatal("health probe must not carry a token")
+			}
+			w.WriteHeader(http.StatusOK)
+		case "/api/v1/agents/runtime-access":
+			if r.Header.Get("Authorization") != "Bearer "+runtimeToken {
+				t.Fatal("runtime access must use only the runtime token")
+			}
+			w.WriteHeader(http.StatusNoContent)
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+	defer server.Close()
+	cfg := Config{ControlPlaneURL: server.URL, BootstrapProjectID: "clean-web", ClusterID: "bethunder-local", AgentID: "project-agent", AgentAuthToken: runtimeToken, ReportTimeout: time.Second}
+	reporter := NewHTTPStatusReporterForAgent(server.URL, "", cfg.ClusterID, cfg.AgentID, time.Second)
+	report := ProbeManagementEndpoint(context.Background(), cfg, reporter, 1)
+	if report.Code != "passed" || !report.RuntimeAccess || !report.HealthReachable {
+		t.Fatalf("preflight=%+v", report)
+	}
+}
+
 func TestCheckControlPlaneHealthRejectsFailedEndpoint(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusServiceUnavailable)
