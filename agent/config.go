@@ -19,6 +19,8 @@ const (
 )
 
 type Config struct {
+	// EnvDiagnostics contains variable names only; values are never retained.
+	EnvDiagnostics            []string
 	ControlPlaneURL           string
 	ControlPlaneEndpointMode  string
 	ControlPlaneCAFile        string
@@ -89,7 +91,7 @@ func ConfigFromEnv() Config {
 	if strings.TrimSpace(agentNamespace) != "" {
 		excludedNamespaces = append(excludedNamespaces, strings.TrimSpace(agentNamespace))
 	}
-	return Config{
+	cfg := Config{
 		ControlPlaneURL:           getenv("ENVPILOT_CONTROL_PLANE_URL", ""),
 		ControlPlaneEndpointMode:  strings.TrimSpace(getenv("ENVPILOT_CONTROL_PLANE_ENDPOINT_MODE", "sameCluster")),
 		ControlPlaneCAFile:        getenv("ENVPILOT_CONTROL_PLANE_CA_FILE", ""),
@@ -105,10 +107,8 @@ func ConfigFromEnv() Config {
 		KubernetesAPIURL:          getenv("ENVPILOT_KUBERNETES_API_URL", inClusterAPIURL()),
 		KubernetesToken:           getenv("ENVPILOT_KUBERNETES_TOKEN_PATH", defaultServiceAccountToken),
 		KubernetesCA:              getenv("ENVPILOT_KUBERNETES_CA_PATH", defaultServiceAccountCA),
-		// An empty selector intentionally means all namespaces. Do not use
-		// getenv here because it treats an explicitly empty environment value as
-		// absent and would silently restore the legacy EnvPlane-only selector.
-		NamespaceSelector:  strings.TrimSpace(os.Getenv("ENVPILOT_WATCH_NAMESPACE_SELECTOR")),
+		// An empty selector intentionally means all namespaces.
+		NamespaceSelector:  strings.TrimSpace(getenv("ENVPILOT_WATCH_NAMESPACE_SELECTOR", "")),
 		Namespaces:         splitCSV(getenv("ENVPILOT_WATCH_NAMESPACES", "")),
 		ExcludedNamespaces: excludedNamespaces,
 		ReadSecrets:        getenvBool("ENVPILOT_DISCOVERY_READ_SECRETS", false),
@@ -118,31 +118,33 @@ func ConfigFromEnv() Config {
 		HeartbeatInterval:  time.Duration(getenvInt("ENVPILOT_AGENT_HEARTBEAT_SECONDS", 30)) * time.Second,
 		RemoteGeneration:   int64(getenvInt("ENVPILOT_REMOTE_GENERATION", 0)),
 	}
+	cfg.EnvDiagnostics = legacyDiagnostics()
+	return cfg
 }
 
 func (c Config) Validate() error {
 	if strings.TrimSpace(c.ControlPlaneURL) == "" {
-		return fmt.Errorf("ENVPILOT_CONTROL_PLANE_URL is required")
+		return fmt.Errorf("ENVPLANE_CONTROL_PLANE_URL is required")
 	}
 	if err := ValidateControlPlaneEndpoint(c.ControlPlaneURL, c.ControlPlaneEndpointMode); err != nil {
 		return err
 	}
 	if strings.TrimSpace(c.ControlPlaneCAFile) != "" {
 		if _, err := NewControlPlaneHTTPClientWithTLS(c.ReportTimeout, c.ControlPlaneCAFile, c.ControlPlaneTLSServerName); err != nil {
-			return fmt.Errorf("invalid ENVPILOT_CONTROL_PLANE_CA_FILE: %w", err)
+			return fmt.Errorf("invalid ENVPLANE_CONTROL_PLANE_CA_FILE: %w", err)
 		}
 	}
 	if strings.TrimSpace(c.ClusterID) == "" {
-		return fmt.Errorf("ENVPILOT_CLUSTER_ID is required")
+		return fmt.Errorf("ENVPLANE_CLUSTER_ID is required")
 	}
 	if strings.TrimSpace(c.AgentID) == "" {
-		return fmt.Errorf("ENVPILOT_AGENT_ID is required")
+		return fmt.Errorf("ENVPLANE_AGENT_ID is required")
 	}
 	if strings.TrimSpace(c.RegistrationToken) == "" && strings.TrimSpace(c.AgentAuthToken) == "" {
-		return fmt.Errorf("set ENVPILOT_AGENT_REGISTRATION_TOKEN or ENVPILOT_AGENT_AUTH_TOKEN")
+		return fmt.Errorf("set ENVPLANE_AGENT_REGISTRATION_TOKEN or ENVPLANE_AGENT_AUTH_TOKEN")
 	}
 	if strings.TrimSpace(c.KubernetesAPIURL) == "" {
-		return fmt.Errorf("Kubernetes API URL is required; set ENVPILOT_KUBERNETES_API_URL outside the cluster")
+		return fmt.Errorf("Kubernetes API URL is required; set ENVPLANE_KUBERNETES_API_URL outside the cluster")
 	}
 	if c.ResyncInterval <= 0 {
 		return fmt.Errorf("resync interval must be positive")
@@ -165,21 +167,21 @@ func ValidateControlPlaneEndpoint(rawURL, endpointMode string) error {
 		mode = "samecluster"
 	}
 	if mode != "samecluster" && mode != "remote" {
-		return fmt.Errorf("ENVPILOT_CONTROL_PLANE_ENDPOINT_MODE must be sameCluster or remote")
+		return fmt.Errorf("ENVPLANE_CONTROL_PLANE_ENDPOINT_MODE must be sameCluster or remote")
 	}
 	parsed, err := url.Parse(strings.TrimSpace(rawURL))
 	if err != nil || (parsed.Scheme != "http" && parsed.Scheme != "https") || parsed.Hostname() == "" {
-		return fmt.Errorf("ENVPILOT_CONTROL_PLANE_URL must be an HTTP(S) URL")
+		return fmt.Errorf("ENVPLANE_CONTROL_PLANE_URL must be an HTTP(S) URL")
 	}
 	if mode != "remote" {
 		return nil
 	}
 	if parsed.Scheme != "https" || parsed.User != nil || parsed.RawQuery != "" || parsed.Fragment != "" {
-		return fmt.Errorf("remote ENVPILOT_CONTROL_PLANE_URL must be an explicit stable HTTPS URL without credentials, query parameters, or fragments")
+		return fmt.Errorf("remote ENVPLANE_CONTROL_PLANE_URL must be an explicit stable HTTPS URL without credentials, query parameters, or fragments")
 	}
 	host := strings.ToLower(strings.TrimSpace(parsed.Hostname()))
 	if host == "localhost" || host == "127.0.0.1" || host == "::1" || host == "envpilot.local" || host == "host.minikube.internal" || strings.HasSuffix(host, ".svc") || strings.Contains(host, ".svc.") {
-		return fmt.Errorf("remote ENVPILOT_CONTROL_PLANE_URL must be target-pod-reachable, not host-local or Kubernetes Service DNS")
+		return fmt.Errorf("remote ENVPLANE_CONTROL_PLANE_URL must be target-pod-reachable, not host-local or Kubernetes Service DNS")
 	}
 	return nil
 }
@@ -235,6 +237,12 @@ func inClusterAPIURL() string {
 }
 
 func getenv(key, fallback string) string {
+	if strings.HasPrefix(key, "ENVPILOT_") {
+		canonical := "ENVPLANE_" + strings.TrimPrefix(key, "ENVPILOT_")
+		if value, set := os.LookupEnv(canonical); set {
+			return strings.TrimSpace(value)
+		}
+	}
 	if value := strings.TrimSpace(os.Getenv(key)); value != "" {
 		return value
 	}
@@ -242,7 +250,7 @@ func getenv(key, fallback string) string {
 }
 
 func getenvInt(key string, fallback int) int {
-	value := strings.TrimSpace(os.Getenv(key))
+	value := getenv(key, "")
 	if value == "" {
 		return fallback
 	}
@@ -254,7 +262,7 @@ func getenvInt(key string, fallback int) int {
 }
 
 func getenvBool(key string, fallback bool) bool {
-	value := strings.TrimSpace(os.Getenv(key))
+	value := getenv(key, "")
 	if value == "" {
 		return fallback
 	}
@@ -263,6 +271,23 @@ func getenvBool(key string, fallback bool) bool {
 		return fallback
 	}
 	return parsed
+}
+
+func legacyDiagnostics() []string {
+	seen := map[string]bool{}
+	result := []string{}
+	for _, entry := range os.Environ() {
+		name, _, ok := strings.Cut(entry, "=")
+		if !ok || !strings.HasPrefix(name, "ENVPILOT_") {
+			continue
+		}
+		item := "deprecated:" + name
+		if !seen[item] {
+			seen[item] = true
+			result = append(result, item)
+		}
+	}
+	return result
 }
 
 func splitCSV(value string) []string {

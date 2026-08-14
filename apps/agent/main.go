@@ -35,6 +35,9 @@ func main() {
 
 func runAgent(logger *slog.Logger) {
 	cfg := clusteragent.ConfigFromEnv()
+	if len(cfg.EnvDiagnostics) > 0 {
+		logger.Warn("deprecated EnvPilot configuration variables are in use", "variables", cfg.EnvDiagnostics)
+	}
 	if err := cfg.Validate(); err != nil {
 		logger.Error("invalid agent configuration", "error", err)
 		os.Exit(1)
@@ -61,9 +64,9 @@ func runAgent(logger *slog.Logger) {
 	}
 	go runHeartbeat(ctx, cfg, reporter, source, logger)
 
-	logger.Info("envpilot agent started", "cluster_id", cfg.ClusterID, "agent_id", cfg.AgentID, "control_plane_url", cfg.ControlPlaneURL)
+	logger.Info("envplane agent started", "cluster_id", cfg.ClusterID, "agent_id", cfg.AgentID, "control_plane_url", cfg.ControlPlaneURL)
 	if err := watcher.Run(ctx); err != nil {
-		logger.Error("envpilot agent stopped", "error", err)
+		logger.Error("envplane agent stopped", "error", err)
 		os.Exit(1)
 	}
 }
@@ -144,7 +147,7 @@ func errorsIsTimeout(err error) bool {
 }
 
 func getenvInt(name string, fallback int) int {
-	value := strings.TrimSpace(os.Getenv(name))
+	value := getenvCompat(name)
 	if value == "" {
 		return fallback
 	}
@@ -153,6 +156,15 @@ func getenvInt(name string, fallback int) int {
 		return fallback
 	}
 	return parsed
+}
+
+func getenvCompat(legacy string) string {
+	if strings.HasPrefix(legacy, "ENVPILOT_") {
+		if value := strings.TrimSpace(os.Getenv("ENVPLANE_" + strings.TrimPrefix(legacy, "ENVPILOT_"))); value != "" {
+			return value
+		}
+	}
+	return strings.TrimSpace(os.Getenv(legacy))
 }
 
 func ensureRuntimeAuth(ctx context.Context, cfg clusteragent.Config, reporter *clusteragent.HTTPStatusReporter, capabilities clusteragent.ClusterCapabilities, logger *slog.Logger) (clusteragent.Config, error) {

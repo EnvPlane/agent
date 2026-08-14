@@ -29,8 +29,43 @@ func TestConfigFromEnvLoadsPersistedAgentAuthTokenFile(t *testing.T) {
 	if cfg.AgentAuthTokenFile != tokenPath {
 		t.Fatalf("agent auth token file = %q", cfg.AgentAuthTokenFile)
 	}
+	if strings.Contains(strings.Join(cfg.EnvDiagnostics, " "), "persisted-agent-auth-token") {
+		t.Fatal("environment diagnostics must not contain token material")
+	}
 	if err := cfg.Validate(); err != nil {
 		t.Fatalf("validate config with persisted auth token: %v", err)
+	}
+}
+
+func TestConfigFromEnvCanonicalAliases(t *testing.T) {
+	for _, name := range []string{"ENVPILOT_CONTROL_PLANE_URL", "ENVPLANE_CONTROL_PLANE_URL", "ENVPILOT_CLUSTER_ID", "ENVPLANE_CLUSTER_ID", "ENVPILOT_AGENT_ID", "ENVPLANE_AGENT_ID"} {
+		t.Setenv(name, "")
+		_ = os.Unsetenv(name)
+	}
+	t.Setenv("ENVPLANE_CONTROL_PLANE_URL", "https://canonical.example")
+	t.Setenv("ENVPLANE_CLUSTER_ID", "canonical-cluster")
+	t.Setenv("ENVPLANE_AGENT_ID", "canonical-agent")
+	cfg := ConfigFromEnv()
+	if cfg.ControlPlaneURL != "https://canonical.example" || cfg.ClusterID != "canonical-cluster" || cfg.AgentID != "canonical-agent" {
+		t.Fatalf("canonical config not loaded: %#v", cfg)
+	}
+}
+
+func TestConfigFromEnvLegacyFallbackAndCanonicalWins(t *testing.T) {
+	for _, name := range []string{"ENVPILOT_CONTROL_PLANE_URL", "ENVPLANE_CONTROL_PLANE_URL", "ENVPILOT_CLUSTER_ID", "ENVPLANE_CLUSTER_ID", "ENVPILOT_AGENT_ID", "ENVPLANE_AGENT_ID"} {
+		t.Setenv(name, "")
+		_ = os.Unsetenv(name)
+	}
+	t.Setenv("ENVPILOT_CONTROL_PLANE_URL", "https://legacy.example")
+	t.Setenv("ENVPILOT_CLUSTER_ID", "legacy-cluster")
+	t.Setenv("ENVPILOT_AGENT_ID", "legacy-agent")
+	legacy := ConfigFromEnv()
+	if legacy.ControlPlaneURL != "https://legacy.example" || len(legacy.EnvDiagnostics) == 0 {
+		t.Fatalf("legacy fallback/diagnostic missing: %#v", legacy)
+	}
+	t.Setenv("ENVPLANE_CONTROL_PLANE_URL", "https://canonical.example")
+	if got := ConfigFromEnv().ControlPlaneURL; got != "https://canonical.example" {
+		t.Fatalf("canonical did not win mixed configuration: %q", got)
 	}
 }
 
