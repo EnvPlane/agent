@@ -28,25 +28,8 @@ jobs:
       metadata: ${{ steps.published.outputs.metadata }}
     steps:
       - uses: actions/checkout@v5
-      - id: source_read_auth
-        name: Select source checkout authentication
-        env:
-          CLIENT_ID: ${{ secrets.ENVPILOT_AUTOMATION_APP_CLIENT_ID }}
-          APP_PRIVATE_KEY: ${{ secrets.ENVPILOT_AUTOMATION_APP_PRIVATE_KEY }}
-          FALLBACK_PAT: ${{ secrets.ENVPILOT_AUTOMATION_PAT }}
-        run: |
-          set -euo pipefail
-          if [[ -n "$CLIENT_ID" && -n "$APP_PRIVATE_KEY" ]]; then
-            echo "method=app" >> "$GITHUB_OUTPUT"
-          elif [[ -n "$FALLBACK_PAT" ]]; then
-            echo "method=pat" >> "$GITHUB_OUTPUT"
-            echo "::warning::Using fine-grained PAT fallback for source checkouts."
-          else
-            echo "No source-read GitHub App credentials or fallback PAT is configured." >&2
-            exit 1
-          fi
       - id: source_read_app
-        if: steps.source_read_auth.outputs.method == 'app'
+        name: Create source-read GitHub App token
         uses: actions/create-github-app-token@v3
         with:
           client-id: ${{ secrets.ENVPILOT_AUTOMATION_APP_CLIENT_ID }}
@@ -56,14 +39,17 @@ jobs:
           permission-contents: read
       - name: Configure private Go modules
         env:
-          SOURCE_TOKEN: ${{ steps.source_read_app.outputs.token || secrets.ENVPILOT_AUTOMATION_PAT }}
+          SOURCE_TOKEN: ${{ steps.source_read_app.outputs.token }}
         run: |
+          set -euo pipefail
           echo 'GOPRIVATE=github.com/envpilot/*' >> "$GITHUB_ENV"
+          export GIT_CONFIG_GLOBAL="$RUNNER_TEMP/envpilot-gitconfig"
+          echo "GIT_CONFIG_GLOBAL=$GIT_CONFIG_GLOBAL" >> "$GITHUB_ENV"
           git config --global url."https://x-access-token:${SOURCE_TOKEN}@github.com/".insteadOf "https://github.com/"
       - uses: actions/checkout@v5
         with:
           repository: EnvPlane/deploy
-          token: ${{ steps.source_read_app.outputs.token || secrets.ENVPILOT_AUTOMATION_PAT }}
+          token: ${{ steps.source_read_app.outputs.token }}
           path: deploy
       - uses: actions/setup-go@v5
         with:
@@ -71,6 +57,11 @@ jobs:
           cache: true
       - name: Use published contracts module
         run: go mod edit -dropreplace=github.com/envpilot/contracts
+      - name: Download private modules before running repository code
+        run: go mod download
+      - name: Remove source credentials before tests
+        if: always()
+        run: rm -f "$RUNNER_TEMP/envpilot-gitconfig"
       - name: Test agent
         run: go test ./...
       - name: Verify agent has no local chart source
@@ -102,7 +93,7 @@ jobs:
           cache-from: type=gha,scope=agent
           cache-to: type=gha,mode=max,scope=agent
           secrets: |
-            github_token=${{ steps.source_read_app.outputs.token || secrets.ENVPILOT_AUTOMATION_PAT }}
+            github_token=${{ steps.source_read_app.outputs.token }}
           provenance: mode=max
           sbom: true
       - name: Scan published image for high and critical vulnerabilities
@@ -143,26 +134,8 @@ jobs:
           name: agent-image-metadata
           path: image-metadata.json
           if-no-files-found: error
-      - id: dispatch_auth
-        if: (github.event_name == 'push' || github.event_name == 'workflow_dispatch') && github.ref == 'refs/heads/main'
-        name: Select deploy dispatch authentication
-        env:
-          CLIENT_ID: ${{ secrets.ENVPILOT_AUTOMATION_APP_CLIENT_ID }}
-          APP_PRIVATE_KEY: ${{ secrets.ENVPILOT_AUTOMATION_APP_PRIVATE_KEY }}
-          FALLBACK_PAT: ${{ secrets.ENVPILOT_AUTOMATION_PAT }}
-        run: |
-          set -euo pipefail
-          if [[ -n "$CLIENT_ID" && -n "$APP_PRIVATE_KEY" ]]; then
-            echo "method=app" >> "$GITHUB_OUTPUT"
-          elif [[ -n "$FALLBACK_PAT" ]]; then
-            echo "method=pat" >> "$GITHUB_OUTPUT"
-            echo "::warning::Using fine-grained PAT fallback for deploy dispatch."
-          else
-            echo "No deploy-dispatch GitHub App credentials or fallback PAT is configured." >&2
-            exit 1
-          fi
       - id: deploy_dispatch_app
-        if: (github.event_name == 'push' || github.event_name == 'workflow_dispatch') && github.ref == 'refs/heads/main' && steps.dispatch_auth.outputs.method == 'app'
+        if: (github.event_name == 'push' || github.event_name == 'workflow_dispatch') && github.ref == 'refs/heads/main'
         uses: actions/create-github-app-token@v3
         with:
           client-id: ${{ secrets.ENVPILOT_AUTOMATION_APP_CLIENT_ID }}
@@ -171,22 +144,9 @@ jobs:
           repositories: deploy
           permission-contents: write
       - name: Dispatch immutable image update with GitHub App
-        if: (github.event_name == 'push' || github.event_name == 'workflow_dispatch') && github.ref == 'refs/heads/main' && steps.dispatch_auth.outputs.method == 'app'
+        if: (github.event_name == 'push' || github.event_name == 'workflow_dispatch') && github.ref == 'refs/heads/main'
         env:
           GH_TOKEN: ${{ steps.deploy_dispatch_app.outputs.token }}
-          METADATA: ${{ steps.published.outputs.metadata }}
-        run: |
-          set -euo pipefail
-          curl --fail-with-body --retry 3 --request POST \
-            --url "https://api.github.com/repos/${{ github.repository_owner }}/deploy/dispatches" \
-            --header "Accept: application/vnd.github+json" \
-            --header "Authorization: Bearer $GH_TOKEN" \
-            --header "X-GitHub-Api-Version: 2022-11-28" \
-            --data "$(jq -cn --argjson payload "$METADATA" --arg source_repository "${{ github.repository }}" --arg source_revision "${{ github.sha }}" '{event_type:"component-image-published",client_payload:($payload + {source_repository:$source_repository,source_revision:$source_revision,publication_id:($payload.component + ":" + $source_revision + ":" + $payload.digest)})}')"
-      - name: Dispatch immutable image update with PAT fallback
-        if: (github.event_name == 'push' || github.event_name == 'workflow_dispatch') && github.ref == 'refs/heads/main' && steps.dispatch_auth.outputs.method == 'pat'
-        env:
-          GH_TOKEN: ${{ secrets.ENVPILOT_AUTOMATION_PAT }}
           METADATA: ${{ steps.published.outputs.metadata }}
         run: |
           set -euo pipefail
