@@ -106,7 +106,7 @@ func ConfigFromEnv() Config {
 		RegistrationToken:         getenv("ENVPILOT_AGENT_REGISTRATION_TOKEN", ""),
 		AgentAuthToken:            agentAuthToken,
 		AgentAuthTokenFile:        agentAuthTokenFile,
-		TerminalEventQueueDir:     getenv("ENVPILOT_TERMINAL_EVENT_QUEUE_DIR", "/var/lib/envpilot-agent/events"),
+		TerminalEventQueueDir:     getenv("ENVPILOT_TERMINAL_EVENT_QUEUE_DIR", "/var/lib/envpilot-agent/auth/events"),
 		BootstrapProjectID:        getenv("ENVPILOT_BOOTSTRAP_PROJECT_ID", ""),
 		ClusterID:                 getenv("ENVPILOT_CLUSTER_ID", "default"),
 		AgentID:                   getenv("ENVPILOT_AGENT_ID", hostname()),
