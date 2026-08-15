@@ -2,12 +2,61 @@ package agent
 
 import (
 	"context"
+	"errors"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 	"time"
 
 	"github.com/envpilot/contracts/domain"
 )
+
+func TestNamespaceWatcherPersistsAndDrainsDeletedEvents(t *testing.T) {
+	queueDir := t.TempDir()
+	reporter := &flakyWatcherReporter{remainingFailures: watchReportAttempts}
+	watcher := NewNamespaceWatcher(&fakeNamespaceSource{}, reporter, time.Hour, nil)
+	watcher.SetTerminalEventQueueDir(queueDir)
+	namespace := Namespace{Metadata: NamespaceMetadata{Name: "envpilot-pr-lost", Labels: map[string]string{environmentIDLabel: "lost"}}, Status: NamespaceStatus{Phase: "Active"}}
+	if err := watcher.reportEvent(context.Background(), "DELETED", namespace); err != nil {
+		t.Fatalf("deleted event should be queued without stopping watcher: %v", err)
+	}
+	entries, err := os.ReadDir(queueDir)
+	if err != nil || len(entries) != 1 {
+		t.Fatalf("queue entries=%d err=%v", len(entries), err)
+	}
+	reporter.remainingFailures = 0
+	if err := watcher.SyncOnce(context.Background()); err != nil {
+		t.Fatalf("drain sync: %v", err)
+	}
+	if len(reporter.reports) == 0 {
+		t.Fatal("queued deleted event was not delivered")
+	}
+	remaining, _ := filepath.Glob(filepath.Join(queueDir, "*.json"))
+	if len(remaining) != 0 {
+		t.Fatalf("queue not drained: %v", remaining)
+	}
+}
+
+type flakyWatcherReporter struct {
+	remainingFailures int
+	reports           []NamespaceStatusReport
+}
+
+func (r *flakyWatcherReporter) ReportNamespaceStatus(_ context.Context, report NamespaceStatusReport) error {
+	if r.remainingFailures > 0 {
+		r.remainingFailures--
+		return errors.New("temporary control-plane failure")
+	}
+	r.reports = append(r.reports, report)
+	return nil
+}
+func (r *flakyWatcherReporter) ReportEvents(context.Context, string, []domain.KubernetesEvent) error {
+	return nil
+}
+func (r *flakyWatcherReporter) ReportFluxStatus(context.Context, string, domain.FluxStatus) error {
+	return nil
+}
 
 func TestNamespaceWatcherReportsEnvNamespaceStatus(t *testing.T) {
 	source := &fakeNamespaceSource{

@@ -2,8 +2,12 @@ package agent
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"log/slog"
+	"os"
+	"path/filepath"
+	"sort"
 	"strings"
 	"sync"
 	"time"
@@ -19,13 +23,14 @@ const (
 )
 
 type NamespaceWatcher struct {
-	source         NamespaceSource
-	reporter       StatusReporter
-	collector      *DeploymentStatusCollector
-	eventCollector *EventCollector
-	fluxCollector  *FluxStatusCollector
-	resyncInterval time.Duration
-	logger         *slog.Logger
+	source           NamespaceSource
+	reporter         StatusReporter
+	collector        *DeploymentStatusCollector
+	eventCollector   *EventCollector
+	fluxCollector    *FluxStatusCollector
+	resyncInterval   time.Duration
+	logger           *slog.Logger
+	terminalQueueDir string
 }
 
 type batchStatusReporter interface {
@@ -79,8 +84,15 @@ func NewNamespaceWatcherWithCollectors(source NamespaceSource, reporter StatusRe
 	}
 }
 
+// SetTerminalEventQueueDir enables durable storage for namespace deletion
+// events that remain undelivered after bounded retries.
+func (w *NamespaceWatcher) SetTerminalEventQueueDir(dir string) {
+	w.terminalQueueDir = strings.TrimSpace(dir)
+}
+
 func (w *NamespaceWatcher) Run(ctx context.Context) error {
 	for {
+		w.drainTerminalEventQueue(ctx)
 		if err := w.SyncOnce(ctx); err != nil && ctx.Err() == nil {
 			w.logger.Error("namespace sync failed", "error", err)
 		}
@@ -108,6 +120,7 @@ func (w *NamespaceWatcher) Run(ctx context.Context) error {
 }
 
 func (w *NamespaceWatcher) SyncOnce(ctx context.Context) error {
+	w.drainTerminalEventQueue(ctx)
 	namespaces, err := w.source.ListNamespaces(ctx)
 	if err != nil {
 		return err
@@ -197,6 +210,12 @@ func (w *NamespaceWatcher) reportEvent(ctx context.Context, eventType string, na
 			return w.reporter.ReportEvents(ctx, environmentID, events)
 		})
 		if err == nil || ctx.Err() != nil || attempt == watchReportAttempts {
+			if err != nil && strings.EqualFold(eventType, "DELETED") {
+				if queueErr := w.enqueueTerminalEvent(eventType, namespace); queueErr != nil {
+					w.logger.Error("persist terminal namespace event failed", "namespace", namespace.Metadata.Name, "error", queueErr)
+				}
+				return nil
+			}
 			return err
 		}
 		w.logger.Warn("namespace event report failed; retrying", "namespace", namespace.Metadata.Name, "event", eventType, "attempt", attempt, "error", err)
@@ -210,6 +229,76 @@ func (w *NamespaceWatcher) reportEvent(ctx context.Context, eventType string, na
 		backoff *= 2
 	}
 	return err
+}
+
+type queuedNamespaceEvent struct {
+	Type      string    `json:"type"`
+	Namespace Namespace `json:"namespace"`
+}
+
+func (w *NamespaceWatcher) enqueueTerminalEvent(eventType string, namespace Namespace) error {
+	if w.terminalQueueDir == "" {
+		return fmt.Errorf("terminal event queue is not configured")
+	}
+	if err := os.MkdirAll(w.terminalQueueDir, 0o700); err != nil {
+		return err
+	}
+	payload, err := json.Marshal(queuedNamespaceEvent{Type: eventType, Namespace: namespace})
+	if err != nil {
+		return err
+	}
+	name := fmt.Sprintf("%d-%s.json", time.Now().UnixNano(), strings.NewReplacer("/", "_", "\\", "_", " ", "_").Replace(namespace.Metadata.Name))
+	tmp, err := os.CreateTemp(w.terminalQueueDir, ".event-*.tmp")
+	if err != nil {
+		return err
+	}
+	tmpName := tmp.Name()
+	defer os.Remove(tmpName)
+	if err := tmp.Chmod(0o600); err != nil {
+		tmp.Close()
+		return err
+	}
+	if _, err := tmp.Write(payload); err != nil {
+		tmp.Close()
+		return err
+	}
+	if err := tmp.Close(); err != nil {
+		return err
+	}
+	return os.Rename(tmpName, filepath.Join(w.terminalQueueDir, name))
+}
+
+func (w *NamespaceWatcher) drainTerminalEventQueue(ctx context.Context) {
+	if w.terminalQueueDir == "" {
+		return
+	}
+	entries, err := os.ReadDir(w.terminalQueueDir)
+	if err != nil {
+		return
+	}
+	paths := make([]string, 0, len(entries))
+	for _, entry := range entries {
+		if !entry.IsDir() && strings.HasSuffix(entry.Name(), ".json") {
+			paths = append(paths, filepath.Join(w.terminalQueueDir, entry.Name()))
+		}
+	}
+	sort.Strings(paths)
+	for _, path := range paths {
+		data, err := os.ReadFile(path)
+		if err != nil {
+			continue
+		}
+		var queued queuedNamespaceEvent
+		if json.Unmarshal(data, &queued) != nil {
+			continue
+		}
+		if err := w.reportEventWithStatus(ctx, queued.Type, queued.Namespace, func(report NamespaceStatusReport) error { return w.reporter.ReportNamespaceStatus(ctx, report) }, func(environmentID string, events []domain.KubernetesEvent) error {
+			return w.reporter.ReportEvents(ctx, environmentID, events)
+		}); err != nil {
+			continue
+		}
+		_ = os.Remove(path)
+	}
 }
 
 func (w *NamespaceWatcher) reportEventWithStatus(ctx context.Context, eventType string, namespace Namespace, reportStatus func(NamespaceStatusReport) error, reportEvents func(string, []domain.KubernetesEvent) error) error {
