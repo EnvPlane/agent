@@ -23,6 +23,10 @@ type NamespaceWatcher struct {
 	logger         *slog.Logger
 }
 
+type batchStatusReporter interface {
+	ReportNamespaceStatusBatch(context.Context, []NamespaceStatusReport) error
+}
+
 func NewNamespaceWatcher(source NamespaceSource, reporter StatusReporter, resyncInterval time.Duration, logger *slog.Logger) *NamespaceWatcher {
 	var collector *DeploymentStatusCollector
 	if workloadSource, ok := source.(WorkloadSource); ok {
@@ -105,12 +109,24 @@ func (w *NamespaceWatcher) SyncOnce(ctx context.Context) error {
 	var wg sync.WaitGroup
 	var firstErr error
 	var errMu sync.Mutex
+	var batchMu sync.Mutex
+	var batchReports []NamespaceStatusReport
+	batch, useBatch := w.reporter.(batchStatusReporter)
 	for i := 0; i < workers; i++ {
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
 			for namespace := range queue {
-				if err := w.reportEvent(ctx, "SYNC", namespace); err != nil {
+				statusSink := func(report NamespaceStatusReport) error {
+					if !useBatch {
+						return w.reporter.ReportNamespaceStatus(ctx, report)
+					}
+					batchMu.Lock()
+					batchReports = append(batchReports, report)
+					batchMu.Unlock()
+					return nil
+				}
+				if err := w.reportEventWithStatus(ctx, "SYNC", namespace, statusSink); err != nil {
 					errMu.Lock()
 					if firstErr == nil {
 						firstErr = err
@@ -132,11 +148,22 @@ func (w *NamespaceWatcher) SyncOnce(ctx context.Context) error {
 	}
 	close(queue)
 	wg.Wait()
+	if useBatch && len(batchReports) > 0 {
+		if err := batch.ReportNamespaceStatusBatch(ctx, batchReports); err != nil && firstErr == nil {
+			firstErr = err
+		}
+	}
 	var syncErr = firstErr
 	return syncErr
 }
 
 func (w *NamespaceWatcher) reportEvent(ctx context.Context, eventType string, namespace Namespace) error {
+	return w.reportEventWithStatus(ctx, eventType, namespace, func(report NamespaceStatusReport) error {
+		return w.reporter.ReportNamespaceStatus(ctx, report)
+	})
+}
+
+func (w *NamespaceWatcher) reportEventWithStatus(ctx context.Context, eventType string, namespace Namespace, reportStatus func(NamespaceStatusReport) error) error {
 	report, ok := BuildNamespaceStatusReport(eventType, namespace)
 	if !ok {
 		w.logger.Debug("namespace skipped", "namespace", namespace.Metadata.Name, "event", eventType)
@@ -152,7 +179,7 @@ func (w *NamespaceWatcher) reportEvent(ctx context.Context, eventType string, na
 			report.Message = namespaceStatusMessage(eventType, namespace, report.Status) + "; " + workloadReport.Message
 		}
 	}
-	if err := w.reporter.ReportNamespaceStatus(ctx, report); err != nil {
+	if err := reportStatus(report); err != nil {
 		return err
 	}
 	if w.eventCollector != nil && report.Status != domain.StatusTerminated {

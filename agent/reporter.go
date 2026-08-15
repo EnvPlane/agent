@@ -22,6 +22,30 @@ type StatusReporter interface {
 	ReportFluxStatus(ctx context.Context, environmentID string, status domain.FluxStatus) error
 }
 
+type batchStatusItem struct {
+	EnvironmentID string                   `json:"environmentId"`
+	Status        domain.EnvironmentStatus `json:"status"`
+	Message       string                   `json:"message,omitempty"`
+	ClusterID     string                   `json:"clusterId,omitempty"`
+}
+
+func (r *HTTPStatusReporter) ReportNamespaceStatusBatch(ctx context.Context, reports []NamespaceStatusReport) error {
+	if len(reports) == 0 {
+		return nil
+	}
+	items := make([]batchStatusItem, 0, len(reports))
+	for _, report := range reports {
+		if strings.TrimSpace(report.EnvironmentID) == "" {
+			return fmt.Errorf("environment id is required")
+		}
+		items = append(items, batchStatusItem{EnvironmentID: report.EnvironmentID, Status: report.Status, Message: report.Message, ClusterID: r.clusterID})
+	}
+	if err := r.sdkClient.DoJSON(ctx, http.MethodPost, "/api/v1/environments/status:batch", map[string]any{"items": items}, nil, ""); err != nil {
+		return fmt.Errorf("report namespace status batch failed: %w", err)
+	}
+	return nil
+}
+
 type NamespaceStatusReport = domain.NamespaceStatusReport
 
 type HTTPStatusReporter struct {

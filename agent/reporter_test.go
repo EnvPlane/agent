@@ -75,7 +75,14 @@ func TestKubernetesAgentReadsNamespaceStatusAndSendsToAPI(t *testing.T) {
 
 	var gotPath string
 	var gotAuth string
-	var gotPayload domain.UpdateEnvironmentStatusRequest
+	var gotPayload struct {
+		Items []struct {
+			EnvironmentID string                   `json:"environmentId"`
+			Status        domain.EnvironmentStatus `json:"status"`
+			Message       string                   `json:"message"`
+			ClusterID     string                   `json:"clusterId"`
+		} `json:"items"`
+	}
 	apiServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		gotPath = r.URL.Path
 		gotAuth = r.Header.Get("Authorization")
@@ -93,17 +100,17 @@ func TestKubernetesAgentReadsNamespaceStatusAndSendsToAPI(t *testing.T) {
 		t.Fatalf("sync once: %v", err)
 	}
 
-	if gotPath != "/api/v1/environments/kan-402/status" {
+	if gotPath != "/api/v1/environments/status:batch" {
 		t.Fatalf("path = %q", gotPath)
 	}
 	if gotAuth != "Bearer agent-token" {
 		t.Fatalf("authorization header = %q", gotAuth)
 	}
-	if gotPayload.Status != domain.StatusReady || gotPayload.Message == "" {
+	if len(gotPayload.Items) != 1 || gotPayload.Items[0].Status != domain.StatusReady || gotPayload.Items[0].Message == "" {
 		t.Fatalf("payload = %#v", gotPayload)
 	}
-	if gotPayload.ClusterID != "dev-us" {
-		t.Fatalf("cluster id = %q", gotPayload.ClusterID)
+	if gotPayload.Items[0].ClusterID != "dev-us" {
+		t.Fatalf("cluster id = %q", gotPayload.Items[0].ClusterID)
 	}
 }
 
