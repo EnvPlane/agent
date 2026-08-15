@@ -554,38 +554,29 @@ func (s *KubernetesNamespaceSource) ListIngressControllers(ctx context.Context) 
 		Items []ingressClass `json:"items"`
 	}
 	endpoint := s.apiURL + "/apis/networking.k8s.io/v1/ingressclasses"
-	req, err := s.newKubernetesGET(ctx, endpoint)
-	if err != nil {
-		return nil, err
-	}
-	resp, err := s.client.Do(req)
-	if err != nil {
-		return nil, err
-	}
-	defer resp.Body.Close()
-	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
-		body, _ := io.ReadAll(io.LimitReader(resp.Body, 4096))
-		return nil, kubernetesListError("ingressclasses.networking.k8s.io", resp.StatusCode, body)
-	}
-	var list ingressClassList
-	if err := json.NewDecoder(resp.Body).Decode(&list); err != nil {
-		return nil, fmt.Errorf("decode ingress class list: %w", err)
-	}
-	controllers := make([]string, 0, len(list.Items))
+	controllers := make([]string, 0)
 	seen := map[string]struct{}{}
-	for _, item := range list.Items {
+	err := s.listPages(ctx, endpoint, "ingressclasses.networking.k8s.io", func(raw json.RawMessage) error {
+		var item ingressClass
+		if err := json.Unmarshal(raw, &item); err != nil {
+			return err
+		}
 		name := strings.TrimSpace(item.Metadata.Name)
 		if name == "" {
 			name = strings.TrimSpace(item.Spec.Controller)
 		}
 		if name == "" {
-			continue
+			return nil
 		}
 		if _, ok := seen[name]; ok {
-			continue
+			return nil
 		}
 		seen[name] = struct{}{}
 		controllers = append(controllers, name)
+		return nil
+	})
+	if err != nil {
+		return nil, err
 	}
 	sort.Strings(controllers)
 	return controllers, nil
@@ -601,28 +592,19 @@ func (s *KubernetesNamespaceSource) ListCRDNames(ctx context.Context) ([]string,
 		Items []crdItem `json:"items"`
 	}
 	endpoint := s.apiURL + "/apis/apiextensions.k8s.io/v1/customresourcedefinitions"
-	req, err := s.newKubernetesGET(ctx, endpoint)
-	if err != nil {
-		return nil, err
-	}
-	resp, err := s.client.Do(req)
-	if err != nil {
-		return nil, err
-	}
-	defer resp.Body.Close()
-	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
-		body, _ := io.ReadAll(io.LimitReader(resp.Body, 4096))
-		return nil, kubernetesListError("customresourcedefinitions.apiextensions.k8s.io", resp.StatusCode, body)
-	}
-	var list crdList
-	if err := json.NewDecoder(resp.Body).Decode(&list); err != nil {
-		return nil, fmt.Errorf("decode CRD list: %w", err)
-	}
-	names := make([]string, 0, len(list.Items))
-	for _, item := range list.Items {
+	names := make([]string, 0)
+	err := s.listPages(ctx, endpoint, "customresourcedefinitions.apiextensions.k8s.io", func(raw json.RawMessage) error {
+		var item crdItem
+		if err := json.Unmarshal(raw, &item); err != nil {
+			return err
+		}
 		if name := strings.TrimSpace(item.Metadata.Name); name != "" {
 			names = append(names, name)
 		}
+		return nil
+	})
+	if err != nil {
+		return nil, err
 	}
 	sort.Strings(names)
 	return names, nil
@@ -638,28 +620,19 @@ func (s *KubernetesNamespaceSource) ListStorageClasses(ctx context.Context) ([]s
 		Items []storageClassItem `json:"items"`
 	}
 	endpoint := s.apiURL + "/apis/storage.k8s.io/v1/storageclasses"
-	req, err := s.newKubernetesGET(ctx, endpoint)
-	if err != nil {
-		return nil, err
-	}
-	resp, err := s.client.Do(req)
-	if err != nil {
-		return nil, err
-	}
-	defer resp.Body.Close()
-	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
-		body, _ := io.ReadAll(io.LimitReader(resp.Body, 4096))
-		return nil, kubernetesListError("storageclasses.storage.k8s.io", resp.StatusCode, body)
-	}
-	var list storageClassList
-	if err := json.NewDecoder(resp.Body).Decode(&list); err != nil {
-		return nil, fmt.Errorf("decode storageclass list: %w", err)
-	}
-	names := make([]string, 0, len(list.Items))
-	for _, item := range list.Items {
+	names := make([]string, 0)
+	err := s.listPages(ctx, endpoint, "storageclasses.storage.k8s.io", func(raw json.RawMessage) error {
+		var item storageClassItem
+		if err := json.Unmarshal(raw, &item); err != nil {
+			return err
+		}
 		if name := strings.TrimSpace(item.Metadata.Name); name != "" {
 			names = append(names, name)
 		}
+		return nil
+	})
+	if err != nil {
+		return nil, err
 	}
 	sort.Strings(names)
 	return names, nil
@@ -745,6 +718,9 @@ func (s *KubernetesNamespaceSource) listPages(ctx context.Context, endpoint, res
 			return fmt.Errorf("read %s list: %w", resource, readErr)
 		}
 		if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+			if resp.StatusCode == http.StatusForbidden {
+				return kubernetesListError(resource, resp.StatusCode, body)
+			}
 			return fmt.Errorf("list %s failed: status=%d body=%s", resource, resp.StatusCode, strings.TrimSpace(string(body)))
 		}
 		var page pagedList
