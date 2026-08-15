@@ -65,6 +65,7 @@ func runAgent(logger *slog.Logger) {
 		logger.Error("agent registration failed", "error", err)
 		os.Exit(1)
 	}
+	reporter.SetToken(cfg.AgentAuthToken)
 	go runHeartbeat(ctx, cfg, reporter, source, logger)
 
 	logger.Info("envplane agent started", "cluster_id", cfg.ClusterID, "agent_id", cfg.AgentID, "control_plane_url", cfg.ControlPlaneURL)
@@ -98,6 +99,7 @@ func runAgentInstallCheck(logger *slog.Logger) {
 		logger.Error("agent registration failed", "error", err)
 		os.Exit(1)
 	}
+	reporter.SetToken(cfg.AgentAuthToken)
 	preflight := clusteragent.ProbeManagementEndpoint(ctx, cfg, reporter, cfg.RemoteGeneration)
 	status := "online"
 	var statusErr error

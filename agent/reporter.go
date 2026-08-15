@@ -86,6 +86,11 @@ type HTTPStatusReporter struct {
 	sdkClient envplanesdk.Client
 }
 
+// SetToken updates the runtime credential obtained during agent registration.
+func (r *HTTPStatusReporter) SetToken(token string) {
+	r.token = strings.TrimSpace(token)
+}
+
 func NewHTTPStatusReporterForAgent(baseURL, token, clusterID, agentID string, timeout time.Duration) *HTTPStatusReporter {
 	return NewHTTPStatusReporterForAgentWithCAFile(baseURL, token, clusterID, agentID, timeout, "")
 }
