@@ -13,6 +13,7 @@ import (
 	"os"
 	"sort"
 	"strings"
+	"time"
 )
 
 type NamespaceSource interface {
@@ -754,6 +755,9 @@ func (s *KubernetesNamespaceSource) isExcludedNamespace(name string) bool {
 
 func newKubernetesHTTPClient(caPath string) (*http.Client, error) {
 	transport := http.DefaultTransport.(*http.Transport).Clone()
+	transport.ResponseHeaderTimeout = 30 * time.Second
+	transport.TLSHandshakeTimeout = 10 * time.Second
+	transport.ExpectContinueTimeout = 1 * time.Second
 	if ca := strings.TrimSpace(caPath); ca != "" {
 		certPool, err := x509.SystemCertPool()
 		if err != nil || certPool == nil {
@@ -766,7 +770,7 @@ func newKubernetesHTTPClient(caPath string) (*http.Client, error) {
 			return nil, fmt.Errorf("read kubernetes ca file: %w", err)
 		}
 	}
-	return &http.Client{Transport: transport}, nil
+	return &http.Client{Transport: transport, Timeout: 30 * time.Second}, nil
 }
 
 func readOptionalFile(path string) (string, error) {

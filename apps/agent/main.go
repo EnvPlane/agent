@@ -8,6 +8,7 @@ import (
 	"os/signal"
 	"strconv"
 	"strings"
+	"sync/atomic"
 	"syscall"
 	"time"
 
@@ -191,23 +192,27 @@ func ensureRuntimeAuth(ctx context.Context, cfg clusteragent.Config, reporter *c
 func runHeartbeat(ctx context.Context, cfg clusteragent.Config, reporter *clusteragent.HTTPStatusReporter, source *clusteragent.KubernetesNamespaceSource, logger *slog.Logger) {
 	ticker := time.NewTicker(cfg.HeartbeatInterval)
 	defer ticker.Stop()
+	var scanRunning atomic.Bool
 	for {
 		select {
 		case <-ctx.Done():
 			return
 		case <-ticker.C:
-			capabilities, err := source.DiscoverCapabilities(ctx)
+			tickCtx, cancel := context.WithTimeout(ctx, 30*time.Second)
+			capabilities, err := source.DiscoverCapabilities(tickCtx)
 			if err != nil {
+				cancel()
 				logger.Error("cluster capability discovery failed", "error", err)
 				continue
 			}
-			preflight := clusteragent.ProbeManagementEndpoint(ctx, cfg, reporter, cfg.RemoteGeneration)
+			preflight := clusteragent.ProbeManagementEndpoint(tickCtx, cfg, reporter, cfg.RemoteGeneration)
 			status := "online"
 			var statusErr error
 			if preflight.Code != "passed" {
 				status, statusErr = "degraded", fmt.Errorf("management endpoint preflight failed: %s", preflight.Code)
 			}
-			if err := reporter.ReportHeartbeatWithEndpointPreflight(ctx, cfg, capabilities, status, statusErr, preflight); err != nil {
+			if err := reporter.ReportHeartbeatWithEndpointPreflight(tickCtx, cfg, capabilities, status, statusErr, preflight); err != nil {
+				cancel()
 				if isFixtureIdentityReissuedError(err) {
 					// The control plane re-opened the explicit E2E fixture's hashed
 					// registration claim. Drop only the persisted runtime token and
@@ -218,7 +223,7 @@ func runHeartbeat(ctx context.Context, cfg clusteragent.Config, reporter *cluste
 						continue
 					}
 					cfg.AgentAuthToken = ""
-					cfg, err = ensureRuntimeAuth(ctx, cfg, reporter, capabilities, logger)
+					cfg, err = ensureRuntimeAuth(tickCtx, cfg, reporter, capabilities, logger)
 					if err != nil {
 						logger.Error("agent fixture identity recovery registration failed", "cluster_id", cfg.ClusterID, "agent_id", cfg.AgentID, "error", err)
 						continue
@@ -228,9 +233,17 @@ func runHeartbeat(ctx context.Context, cfg clusteragent.Config, reporter *cluste
 				}
 				logger.Error("agent heartbeat failed", "cluster_id", cfg.ClusterID, "agent_id", cfg.AgentID, "error", err)
 			}
+			cancel()
 			if preflight.Code == "passed" {
-				if err := runResourceScanTick(ctx, cfg, reporter, source, logger); err != nil {
-					logger.Error("agent resource scan dispatch failed", "cluster_id", cfg.ClusterID, "agent_id", cfg.AgentID, "error", err)
+				if scanRunning.CompareAndSwap(false, true) {
+					go func() {
+						defer scanRunning.Store(false)
+						scanCtx, scanCancel := context.WithTimeout(ctx, 45*time.Second)
+						defer scanCancel()
+						if err := runResourceScanTick(scanCtx, cfg, reporter, source, logger); err != nil {
+							logger.Error("agent resource scan dispatch failed", "cluster_id", cfg.ClusterID, "agent_id", cfg.AgentID, "error", err)
+						}
+					}()
 				}
 			}
 		}
