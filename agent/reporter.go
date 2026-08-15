@@ -46,6 +46,23 @@ func (r *HTTPStatusReporter) ReportNamespaceStatusBatch(ctx context.Context, rep
 	return nil
 }
 
+func (r *HTTPStatusReporter) ReportEventsBatch(ctx context.Context, reports []EnvironmentEventsReport) error {
+	if len(reports) == 0 {
+		return nil
+	}
+	items := make([]map[string]any, 0, len(reports))
+	for _, report := range reports {
+		if strings.TrimSpace(report.EnvironmentID) == "" {
+			return fmt.Errorf("environment id is required")
+		}
+		items = append(items, map[string]any{"environmentId": report.EnvironmentID, "clusterId": r.clusterID, "events": report.Events})
+	}
+	if err := r.sdkClient.DoJSON(ctx, http.MethodPost, "/api/v1/environments/events:batch", map[string]any{"items": items}, nil, ""); err != nil {
+		return fmt.Errorf("report events batch failed: %w", err)
+	}
+	return nil
+}
+
 type NamespaceStatusReport = domain.NamespaceStatusReport
 
 type HTTPStatusReporter struct {

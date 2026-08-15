@@ -27,6 +27,15 @@ type batchStatusReporter interface {
 	ReportNamespaceStatusBatch(context.Context, []NamespaceStatusReport) error
 }
 
+type batchEventReporter interface {
+	ReportEventsBatch(context.Context, []EnvironmentEventsReport) error
+}
+
+type EnvironmentEventsReport struct {
+	EnvironmentID string
+	Events        []domain.KubernetesEvent
+}
+
 func NewNamespaceWatcher(source NamespaceSource, reporter StatusReporter, resyncInterval time.Duration, logger *slog.Logger) *NamespaceWatcher {
 	var collector *DeploymentStatusCollector
 	if workloadSource, ok := source.(WorkloadSource); ok {
@@ -111,7 +120,9 @@ func (w *NamespaceWatcher) SyncOnce(ctx context.Context) error {
 	var errMu sync.Mutex
 	var batchMu sync.Mutex
 	var batchReports []NamespaceStatusReport
+	var batchEvents []EnvironmentEventsReport
 	batch, useBatch := w.reporter.(batchStatusReporter)
+	eventBatch, useEventBatch := w.reporter.(batchEventReporter)
 	for i := 0; i < workers; i++ {
 		wg.Add(1)
 		go func() {
@@ -126,7 +137,16 @@ func (w *NamespaceWatcher) SyncOnce(ctx context.Context) error {
 					batchMu.Unlock()
 					return nil
 				}
-				if err := w.reportEventWithStatus(ctx, "SYNC", namespace, statusSink); err != nil {
+				eventSink := func(environmentID string, events []domain.KubernetesEvent) error {
+					if !useEventBatch {
+						return w.reporter.ReportEvents(ctx, environmentID, events)
+					}
+					batchMu.Lock()
+					batchEvents = append(batchEvents, EnvironmentEventsReport{EnvironmentID: environmentID, Events: events})
+					batchMu.Unlock()
+					return nil
+				}
+				if err := w.reportEventWithStatus(ctx, "SYNC", namespace, statusSink, eventSink); err != nil {
 					errMu.Lock()
 					if firstErr == nil {
 						firstErr = err
@@ -153,6 +173,11 @@ func (w *NamespaceWatcher) SyncOnce(ctx context.Context) error {
 			firstErr = err
 		}
 	}
+	if useEventBatch && len(batchEvents) > 0 {
+		if err := eventBatch.ReportEventsBatch(ctx, batchEvents); err != nil && firstErr == nil {
+			firstErr = err
+		}
+	}
 	var syncErr = firstErr
 	return syncErr
 }
@@ -160,10 +185,12 @@ func (w *NamespaceWatcher) SyncOnce(ctx context.Context) error {
 func (w *NamespaceWatcher) reportEvent(ctx context.Context, eventType string, namespace Namespace) error {
 	return w.reportEventWithStatus(ctx, eventType, namespace, func(report NamespaceStatusReport) error {
 		return w.reporter.ReportNamespaceStatus(ctx, report)
+	}, func(environmentID string, events []domain.KubernetesEvent) error {
+		return w.reporter.ReportEvents(ctx, environmentID, events)
 	})
 }
 
-func (w *NamespaceWatcher) reportEventWithStatus(ctx context.Context, eventType string, namespace Namespace, reportStatus func(NamespaceStatusReport) error) error {
+func (w *NamespaceWatcher) reportEventWithStatus(ctx context.Context, eventType string, namespace Namespace, reportStatus func(NamespaceStatusReport) error, reportEvents func(string, []domain.KubernetesEvent) error) error {
 	report, ok := BuildNamespaceStatusReport(eventType, namespace)
 	if !ok {
 		w.logger.Debug("namespace skipped", "namespace", namespace.Metadata.Name, "event", eventType)
@@ -186,7 +213,7 @@ func (w *NamespaceWatcher) reportEventWithStatus(ctx context.Context, eventType 
 		events, err := w.eventCollector.Collect(ctx, namespace.Metadata.Name)
 		if err != nil {
 			w.logger.Error("kubernetes events collection failed", "environment", report.EnvironmentID, "namespace", namespace.Metadata.Name, "error", err)
-		} else if err := w.reporter.ReportEvents(ctx, report.EnvironmentID, events); err != nil {
+		} else if err := reportEvents(report.EnvironmentID, events); err != nil {
 			w.logger.Error("kubernetes events report failed", "environment", report.EnvironmentID, "namespace", namespace.Metadata.Name, "error", err)
 		} else {
 			w.logger.Info("kubernetes events reported", "environment", report.EnvironmentID, "namespace", namespace.Metadata.Name, "count", len(events))
