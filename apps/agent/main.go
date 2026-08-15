@@ -232,6 +232,7 @@ func runHeartbeat(ctx context.Context, cfg clusteragent.Config, reporter *cluste
 						logger.Error("agent fixture identity recovery registration failed", "cluster_id", cfg.ClusterID, "agent_id", cfg.AgentID, "error", err)
 						continue
 					}
+					reporter.SetToken(cfg.AgentAuthToken)
 					logger.Info("agent fixture identity recovered", "cluster_id", cfg.ClusterID, "agent_id", cfg.AgentID)
 					continue
 				}
