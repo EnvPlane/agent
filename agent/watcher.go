@@ -13,6 +13,11 @@ import (
 
 const environmentIDLabel = "envpilot.io/environment-id"
 
+const (
+	watchReportAttempts       = 5
+	watchReportInitialBackoff = 250 * time.Millisecond
+)
+
 type NamespaceWatcher struct {
 	source         NamespaceSource
 	reporter       StatusReporter
@@ -183,11 +188,28 @@ func (w *NamespaceWatcher) SyncOnce(ctx context.Context) error {
 }
 
 func (w *NamespaceWatcher) reportEvent(ctx context.Context, eventType string, namespace Namespace) error {
-	return w.reportEventWithStatus(ctx, eventType, namespace, func(report NamespaceStatusReport) error {
-		return w.reporter.ReportNamespaceStatus(ctx, report)
-	}, func(environmentID string, events []domain.KubernetesEvent) error {
-		return w.reporter.ReportEvents(ctx, environmentID, events)
-	})
+	var err error
+	backoff := watchReportInitialBackoff
+	for attempt := 1; attempt <= watchReportAttempts; attempt++ {
+		err = w.reportEventWithStatus(ctx, eventType, namespace, func(report NamespaceStatusReport) error {
+			return w.reporter.ReportNamespaceStatus(ctx, report)
+		}, func(environmentID string, events []domain.KubernetesEvent) error {
+			return w.reporter.ReportEvents(ctx, environmentID, events)
+		})
+		if err == nil || ctx.Err() != nil || attempt == watchReportAttempts {
+			return err
+		}
+		w.logger.Warn("namespace event report failed; retrying", "namespace", namespace.Metadata.Name, "event", eventType, "attempt", attempt, "error", err)
+		timer := time.NewTimer(backoff)
+		select {
+		case <-ctx.Done():
+			timer.Stop()
+			return ctx.Err()
+		case <-timer.C:
+		}
+		backoff *= 2
+	}
+	return err
 }
 
 func (w *NamespaceWatcher) reportEventWithStatus(ctx context.Context, eventType string, namespace Namespace, reportStatus func(NamespaceStatusReport) error, reportEvents func(string, []domain.KubernetesEvent) error) error {
