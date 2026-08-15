@@ -56,6 +56,7 @@ type NamespaceMetadata struct {
 	Name              string            `json:"name"`
 	Labels            map[string]string `json:"labels"`
 	DeletionTimestamp string            `json:"deletionTimestamp"`
+	ResourceVersion   string            `json:"resourceVersion"`
 }
 
 type NamespaceStatus struct {
@@ -232,7 +233,10 @@ type FluxCondition struct {
 }
 
 type namespaceList struct {
-	Items []Namespace `json:"items"`
+	Items    []Namespace `json:"items"`
+	Metadata struct {
+		Continue string `json:"continue"`
+	} `json:"metadata"`
 }
 
 type namespaceWatchEvent struct {
@@ -317,32 +321,41 @@ func (s *KubernetesNamespaceSource) listNamespaces(ctx context.Context) ([]Names
 	if len(s.allowed) > 0 && strings.TrimSpace(s.selector) == "" {
 		return s.listExplicitNamespaces(ctx)
 	}
-	req, err := s.newNamespacesRequest(ctx, false)
-	if err != nil {
-		return nil, nil, err
-	}
-	resp, err := s.client.Do(req)
-	if err != nil {
-		return nil, nil, err
-	}
-	defer resp.Body.Close()
-	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
-		body, _ := io.ReadAll(io.LimitReader(resp.Body, 4096))
-		return nil, nil, fmt.Errorf("list namespaces failed: status=%d body=%s", resp.StatusCode, strings.TrimSpace(string(body)))
-	}
-	var list namespaceList
-	if err := json.NewDecoder(resp.Body).Decode(&list); err != nil {
-		return nil, nil, fmt.Errorf("decode namespace list: %w", err)
-	}
-	items := make([]Namespace, 0, len(list.Items))
+	items := make([]Namespace, 0)
 	excluded := make([]string, 0)
-	for _, item := range list.Items {
-		if s.isExcludedNamespace(item.Metadata.Name) {
-			excluded = append(excluded, item.Metadata.Name)
-			continue
+	for continuation := ""; ; {
+		req, err := s.newNamespacesRequest(ctx, false, continuation)
+		if err != nil {
+			return nil, nil, err
 		}
-		if s.allowedNamespace(item.Metadata.Name) {
-			items = append(items, item)
+		resp, err := s.client.Do(req)
+		if err != nil {
+			return nil, nil, err
+		}
+		body, readErr := io.ReadAll(io.LimitReader(resp.Body, 4<<20))
+		resp.Body.Close()
+		if readErr != nil {
+			return nil, nil, fmt.Errorf("read namespace list: %w", readErr)
+		}
+		if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+			return nil, nil, fmt.Errorf("list namespaces failed: status=%d body=%s", resp.StatusCode, strings.TrimSpace(string(body)))
+		}
+		var list namespaceList
+		if err := json.Unmarshal(body, &list); err != nil {
+			return nil, nil, fmt.Errorf("decode namespace list: %w", err)
+		}
+		for _, item := range list.Items {
+			if s.isExcludedNamespace(item.Metadata.Name) {
+				excluded = append(excluded, item.Metadata.Name)
+				continue
+			}
+			if s.allowedNamespace(item.Metadata.Name) {
+				items = append(items, item)
+			}
+		}
+		continuation = list.Metadata.Continue
+		if continuation == "" {
+			break
 		}
 	}
 	sort.Strings(excluded)
@@ -709,7 +722,7 @@ func kubernetesListError(resource string, statusCode int, body []byte) error {
 	return fmt.Errorf("list %s failed: status=%d body=%s", resource, statusCode, message)
 }
 
-func (s *KubernetesNamespaceSource) newNamespacesRequest(ctx context.Context, watch bool) (*http.Request, error) {
+func (s *KubernetesNamespaceSource) newNamespacesRequest(ctx context.Context, watch bool, continuation ...string) (*http.Request, error) {
 	endpoint, err := url.Parse(s.apiURL + "/api/v1/namespaces")
 	if err != nil {
 		return nil, err
@@ -720,6 +733,13 @@ func (s *KubernetesNamespaceSource) newNamespacesRequest(ctx context.Context, wa
 	}
 	if watch {
 		query.Set("watch", "true")
+		query.Set("timeoutSeconds", "60")
+		query.Set("allowWatchBookmarks", "true")
+	} else {
+		query.Set("limit", "500")
+	}
+	if len(continuation) > 0 && continuation[0] != "" {
+		query.Set("continue", continuation[0])
 	}
 	endpoint.RawQuery = query.Encode()
 	return s.newKubernetesGET(ctx, endpoint.String())
