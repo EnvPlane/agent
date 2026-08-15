@@ -69,6 +69,8 @@ jobs:
         with:
           go-version-file: go.mod
           cache: true
+      - name: Use published contracts module
+        run: go mod edit -dropreplace=github.com/envpilot/contracts
       - name: Test agent
         run: go test ./...
       - name: Verify agent has no local chart source
