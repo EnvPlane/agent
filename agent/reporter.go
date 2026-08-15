@@ -86,10 +86,6 @@ type HTTPStatusReporter struct {
 	sdkClient envplanesdk.Client
 }
 
-func NewHTTPStatusReporter(baseURL, token string, timeout time.Duration) *HTTPStatusReporter {
-	return NewHTTPStatusReporterForAgent(baseURL, token, "", "", timeout)
-}
-
 func NewHTTPStatusReporterForAgent(baseURL, token, clusterID, agentID string, timeout time.Duration) *HTTPStatusReporter {
 	return NewHTTPStatusReporterForAgentWithCAFile(baseURL, token, clusterID, agentID, timeout, "")
 }
