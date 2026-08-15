@@ -22,6 +22,18 @@ type StatusReporter interface {
 	ReportFluxStatus(ctx context.Context, environmentID string, status domain.FluxStatus) error
 }
 
+// APIError preserves the server error code so recovery logic never depends on
+// human-readable response text.
+type APIError struct {
+	Status  int
+	Code    string `json:"code"`
+	Message string `json:"error"`
+}
+
+func (e *APIError) Error() string {
+	return fmt.Sprintf("api request failed: status=%d code=%s: %s", e.Status, e.Code, e.Message)
+}
+
 type batchStatusItem struct {
 	EnvironmentID string                   `json:"environmentId"`
 	Status        domain.EnvironmentStatus `json:"status"`
@@ -377,6 +389,14 @@ func (r *HTTPStatusReporter) postJSONDecodeWithBearer(ctx context.Context, path 
 	defer resp.Body.Close()
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
 		responseBody, _ := io.ReadAll(io.LimitReader(resp.Body, 4096))
+		var apiError APIError
+		if json.Unmarshal(responseBody, &apiError) == nil && strings.TrimSpace(apiError.Code) != "" {
+			apiError.Status = resp.StatusCode
+			if apiError.Message == "" {
+				apiError.Message = operation
+			}
+			return &apiError
+		}
 		return fmt.Errorf("%s failed: status=%d body=%s", operation, resp.StatusCode, strings.TrimSpace(string(responseBody)))
 	}
 	if output != nil {

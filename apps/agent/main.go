@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"log/slog"
 	"os"
@@ -251,11 +252,8 @@ func runHeartbeat(ctx context.Context, cfg clusteragent.Config, reporter *cluste
 }
 
 func isFixtureIdentityReissuedError(err error) bool {
-	if err == nil {
-		return false
-	}
-	message := strings.ToLower(err.Error())
-	return strings.Contains(message, "fixture_identity_reissued") || strings.Contains(message, "fixture agent identity was reissued")
+	var apiErr *clusteragent.APIError
+	return err != nil && errors.As(err, &apiErr) && apiErr.Code == "fixture_identity_reissued"
 }
 
 func runResourceScanTick(ctx context.Context, cfg clusteragent.Config, reporter *clusteragent.HTTPStatusReporter, source *clusteragent.KubernetesNamespaceSource, logger *slog.Logger) error {
