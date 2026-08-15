@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"github.com/envpilot/contracts/domain"
+	"github.com/envpilot/contracts/sdk/go/envplanesdk"
 )
 
 type StatusReporter interface {
@@ -21,14 +22,7 @@ type StatusReporter interface {
 	ReportFluxStatus(ctx context.Context, environmentID string, status domain.FluxStatus) error
 }
 
-type NamespaceStatusReport struct {
-	EnvironmentID string
-	Namespace     string
-	Status        domain.EnvironmentStatus
-	Message       string
-	EventType     string
-	Phase         string
-}
+type NamespaceStatusReport = domain.NamespaceStatusReport
 
 type HTTPStatusReporter struct {
 	baseURL   string
@@ -36,6 +30,7 @@ type HTTPStatusReporter struct {
 	clusterID string
 	agentID   string
 	client    *http.Client
+	sdkClient envplanesdk.Client
 }
 
 func NewHTTPStatusReporter(baseURL, token string, timeout time.Duration) *HTTPStatusReporter {
@@ -60,13 +55,21 @@ func NewHTTPStatusReporterForAgentWithTLS(baseURL, token, clusterID, agentID str
 		// through their normal registration/heartbeat path.
 		client = &http.Client{Timeout: timeout}
 	}
-	return &HTTPStatusReporter{
+	reporter := &HTTPStatusReporter{
 		baseURL:   strings.TrimRight(baseURL, "/"),
 		token:     strings.TrimSpace(token),
 		clusterID: strings.TrimSpace(clusterID),
 		agentID:   strings.TrimSpace(agentID),
 		client:    client,
 	}
+	reporter.sdkClient = envplanesdk.Client{
+		BaseURL:    reporter.baseURL,
+		HTTPClient: client,
+		TokenProvider: func(context.Context) (string, error) {
+			return reporter.token, nil
+		},
+	}
+	return reporter
 }
 
 func (r *HTTPStatusReporter) ReportNamespaceStatus(ctx context.Context, report NamespaceStatusReport) error {
@@ -78,27 +81,9 @@ func (r *HTTPStatusReporter) ReportNamespaceStatus(ctx context.Context, report N
 		Message:   report.Message,
 		ClusterID: r.clusterID,
 	}
-	body, err := json.Marshal(payload)
-	if err != nil {
-		return err
-	}
-	endpoint := r.baseURL + "/api/v1/environments/" + url.PathEscape(report.EnvironmentID) + "/status"
-	req, err := http.NewRequestWithContext(ctx, http.MethodPost, endpoint, bytes.NewReader(body))
-	if err != nil {
-		return err
-	}
-	req.Header.Set("Content-Type", "application/json")
-	if r.token != "" {
-		req.Header.Set("Authorization", "Bearer "+r.token)
-	}
-	resp, err := r.client.Do(req)
-	if err != nil {
-		return err
-	}
-	defer resp.Body.Close()
-	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
-		responseBody, _ := io.ReadAll(io.LimitReader(resp.Body, 4096))
-		return fmt.Errorf("report namespace status failed: environment=%s status=%d body=%s", report.EnvironmentID, resp.StatusCode, strings.TrimSpace(string(responseBody)))
+	path := "/api/v1/environments/" + url.PathEscape(report.EnvironmentID) + "/status"
+	if err := r.sdkClient.DoJSON(ctx, http.MethodPost, path, payload, nil, ""); err != nil {
+		return fmt.Errorf("report namespace status failed: environment=%s: %w", report.EnvironmentID, err)
 	}
 	return nil
 }

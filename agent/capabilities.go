@@ -12,11 +12,7 @@ import (
 	"github.com/envpilot/contracts/domain"
 )
 
-type ClusterCapabilities struct {
-	KubernetesVersion string
-	Capabilities      []string
-	Report            domain.ClusterCapabilityReport
-}
+type ClusterCapabilities = domain.ClusterCapabilities
 
 type CapabilitySource interface {
 	DiscoverCapabilities(ctx context.Context) (ClusterCapabilities, error)
