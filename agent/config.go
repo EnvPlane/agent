@@ -27,6 +27,7 @@ type Config struct {
 	ControlPlaneEndpointMode  string
 	ControlPlaneCAFile        string
 	ControlPlaneTLSServerName string
+	AllowInsecureControlPlane bool
 	RegistrationToken         string
 	AgentAuthToken            string
 	AgentAuthTokenFile        string
@@ -100,6 +101,7 @@ func ConfigFromEnv() Config {
 		ControlPlaneEndpointMode:  strings.TrimSpace(getenv("ENVPILOT_CONTROL_PLANE_ENDPOINT_MODE", "sameCluster")),
 		ControlPlaneCAFile:        getenv("ENVPILOT_CONTROL_PLANE_CA_FILE", ""),
 		ControlPlaneTLSServerName: getenv("ENVPILOT_CONTROL_PLANE_TLS_SERVER_NAME", ""),
+		AllowInsecureControlPlane: getenvBool("ENVPILOT_ALLOW_INSECURE_CONTROL_PLANE", false),
 		RegistrationToken:         getenv("ENVPILOT_AGENT_REGISTRATION_TOKEN", ""),
 		AgentAuthToken:            agentAuthToken,
 		AgentAuthTokenFile:        agentAuthTokenFile,
@@ -132,7 +134,7 @@ func (c Config) Validate() error {
 	if strings.TrimSpace(c.ControlPlaneURL) == "" {
 		return fmt.Errorf("ENVPLANE_CONTROL_PLANE_URL is required")
 	}
-	if err := ValidateControlPlaneEndpoint(c.ControlPlaneURL, c.ControlPlaneEndpointMode); err != nil {
+	if err := ValidateControlPlaneEndpointWithPolicy(c.ControlPlaneURL, c.ControlPlaneEndpointMode, c.AllowInsecureControlPlane); err != nil {
 		return err
 	}
 	if strings.TrimSpace(c.ControlPlaneCAFile) != "" {
@@ -174,6 +176,10 @@ func (c Config) Validate() error {
 // only when the chart declares a remote deployment. Same-cluster Agents use
 // Kubernetes Service DNS and are intentionally allowed to do so.
 func ValidateControlPlaneEndpoint(rawURL, endpointMode string) error {
+	return ValidateControlPlaneEndpointWithPolicy(rawURL, endpointMode, false)
+}
+
+func ValidateControlPlaneEndpointWithPolicy(rawURL, endpointMode string, allowInsecure bool) error {
 	mode := strings.ToLower(strings.TrimSpace(endpointMode))
 	if mode == "" {
 		mode = "samecluster"
@@ -184,6 +190,9 @@ func ValidateControlPlaneEndpoint(rawURL, endpointMode string) error {
 	parsed, err := url.Parse(strings.TrimSpace(rawURL))
 	if err != nil || (parsed.Scheme != "http" && parsed.Scheme != "https") || parsed.Hostname() == "" {
 		return fmt.Errorf("ENVPLANE_CONTROL_PLANE_URL must be an HTTP(S) URL")
+	}
+	if parsed.Scheme == "http" && !allowInsecure {
+		return fmt.Errorf("ENVPLANE_CONTROL_PLANE_URL must use HTTPS unless ENVPILOT_ALLOW_INSECURE_CONTROL_PLANE=true")
 	}
 	if mode != "remote" {
 		return nil

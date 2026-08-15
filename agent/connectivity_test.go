@@ -48,7 +48,7 @@ func TestProbeManagementEndpointPassesWithRuntimeAuthWithoutLeakingBootstrapToke
 		}
 	}))
 	defer server.Close()
-	cfg := Config{ControlPlaneURL: server.URL, BootstrapProjectID: "clean-web", ClusterID: "bethunder-local", AgentID: "project-agent", AgentAuthToken: runtimeToken, ReportTimeout: time.Second}
+	cfg := Config{ControlPlaneURL: server.URL, AllowInsecureControlPlane: true, BootstrapProjectID: "clean-web", ClusterID: "bethunder-local", AgentID: "project-agent", AgentAuthToken: runtimeToken, ReportTimeout: time.Second}
 	reporter := NewHTTPStatusReporterForAgent(server.URL, "", cfg.ClusterID, cfg.AgentID, time.Second)
 	report := ProbeManagementEndpoint(context.Background(), cfg, reporter, 1)
 	if report.Code != "passed" || !report.RuntimeAccess || !report.HealthReachable {

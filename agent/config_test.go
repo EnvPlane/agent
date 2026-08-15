@@ -168,7 +168,7 @@ func TestConfigRequiresStableHTTPSForRemoteControlPlaneEndpoint(t *testing.T) {
 		ReportTimeout:            time.Second,
 		HeartbeatInterval:        time.Second,
 	}
-	if err := cfg.Validate(); err == nil || !strings.Contains(err.Error(), "stable HTTPS") {
+	if err := cfg.Validate(); err == nil || !strings.Contains(err.Error(), "HTTPS") {
 		t.Fatalf("remote HTTP endpoint error=%v", err)
 	}
 	cfg.ControlPlaneURL = "https://api.remote.example"
@@ -179,18 +179,28 @@ func TestConfigRequiresStableHTTPSForRemoteControlPlaneEndpoint(t *testing.T) {
 
 func TestConfigAllowsServiceDNSOnlyForSameCluster(t *testing.T) {
 	cfg := Config{
-		ControlPlaneURL:          "http://envpilot-control-plane.envpilot.svc:8080",
-		ControlPlaneEndpointMode: "sameCluster",
-		RegistrationToken:        "registration-token",
-		ClusterID:                "same-cluster",
-		AgentID:                  "same-agent",
-		KubernetesAPIURL:         "https://kubernetes.example",
-		ResyncInterval:           time.Second,
-		ReportTimeout:            time.Second,
-		HeartbeatInterval:        time.Second,
+		ControlPlaneURL:           "http://envpilot-control-plane.envpilot.svc:8080",
+		ControlPlaneEndpointMode:  "sameCluster",
+		AllowInsecureControlPlane: true,
+		RegistrationToken:         "registration-token",
+		ClusterID:                 "same-cluster",
+		AgentID:                   "same-agent",
+		KubernetesAPIURL:          "https://kubernetes.example",
+		ResyncInterval:            time.Second,
+		ReportTimeout:             time.Second,
+		HeartbeatInterval:         time.Second,
 	}
 	if err := cfg.Validate(); err != nil {
 		t.Fatalf("same-cluster Service DNS must be valid: %v", err)
+	}
+}
+
+func TestConfigRejectsInsecureSameClusterWithoutExplicitOptIn(t *testing.T) {
+	if err := ValidateControlPlaneEndpoint("http://envpilot-control-plane.envpilot.svc:8080", "sameCluster"); err == nil {
+		t.Fatal("same-cluster HTTP must require explicit insecure opt-in")
+	}
+	if err := ValidateControlPlaneEndpointWithPolicy("http://envpilot-control-plane.envpilot.svc:8080", "sameCluster", true); err != nil {
+		t.Fatalf("explicit insecure opt-in must be accepted: %v", err)
 	}
 }
 

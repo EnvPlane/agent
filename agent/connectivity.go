@@ -166,6 +166,10 @@ func NewControlPlaneHTTPClientWithTLS(timeout time.Duration, caFile, serverName 
 func ProbeManagementEndpoint(ctx context.Context, cfg Config, reporter *HTTPStatusReporter, generation int64) *domain.ManagementEndpointPreflight {
 	checked := time.Now().UTC()
 	report := &domain.ManagementEndpointPreflight{Generation: generation, Code: "dns_failed", CheckedAt: &checked}
+	if strings.HasPrefix(strings.ToLower(strings.TrimSpace(cfg.ControlPlaneURL)), "http://") && !cfg.AllowInsecureControlPlane {
+		report.Code = "insecure_transport"
+		return report
+	}
 	client, err := NewControlPlaneHTTPClientWithTLS(cfg.ReportTimeout, cfg.ControlPlaneCAFile, cfg.ControlPlaneTLSServerName)
 	if err != nil {
 		report.Code = "tls_ca_failed"
