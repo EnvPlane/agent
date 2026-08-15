@@ -37,6 +37,23 @@ func TestConfigFromEnvLoadsPersistedAgentAuthTokenFile(t *testing.T) {
 	}
 }
 
+func TestConfigFromEnvLoadsKubernetesRateLimit(t *testing.T) {
+	t.Setenv("ENVPILOT_CONTROL_PLANE_URL", "https://envpilot.example")
+	t.Setenv("ENVPILOT_CLUSTER_ID", "dev-us")
+	t.Setenv("ENVPILOT_AGENT_ID", "agent-1")
+	t.Setenv("ENVPILOT_AGENT_REGISTRATION_TOKEN", "registration-token")
+	t.Setenv("ENVPILOT_KUBERNETES_API_URL", "https://kubernetes.example")
+	t.Setenv("ENVPILOT_KUBERNETES_QPS", "7.5")
+	t.Setenv("ENVPILOT_KUBERNETES_BURST", "12")
+	cfg := ConfigFromEnv()
+	if cfg.KubernetesQPS != 7.5 || cfg.KubernetesBurst != 12 {
+		t.Fatalf("kubernetes rate limit = %v/%d", cfg.KubernetesQPS, cfg.KubernetesBurst)
+	}
+	if err := cfg.Validate(); err != nil {
+		t.Fatalf("validate rate-limited config: %v", err)
+	}
+}
+
 func TestConfigFromEnvCanonicalAliases(t *testing.T) {
 	for _, name := range []string{"ENVPILOT_CONTROL_PLANE_URL", "ENVPLANE_CONTROL_PLANE_URL", "ENVPILOT_CLUSTER_ID", "ENVPLANE_CLUSTER_ID", "ENVPILOT_AGENT_ID", "ENVPLANE_AGENT_ID"} {
 		t.Setenv(name, "")

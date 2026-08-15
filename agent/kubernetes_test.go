@@ -3,12 +3,26 @@ package agent
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"net/http"
 	"net/http/httptest"
 	"reflect"
 	"strings"
 	"testing"
+	"time"
 )
+
+func TestKubernetesRateLimiterHonorsContextCancellation(t *testing.T) {
+	limiter := newKubernetesRateLimiter(1, 1)
+	if err := limiter.wait(context.Background()); err != nil {
+		t.Fatalf("consume initial burst: %v", err)
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Millisecond)
+	defer cancel()
+	if err := limiter.wait(ctx); !errors.Is(err, context.DeadlineExceeded) {
+		t.Fatalf("wait error = %v, want deadline exceeded", err)
+	}
+}
 
 func TestKubernetesNamespaceSourceListsSelectedNamespaces(t *testing.T) {
 	var gotAuth string

@@ -13,6 +13,7 @@ import (
 	"os"
 	"sort"
 	"strings"
+	"sync"
 	"time"
 )
 
@@ -45,6 +46,74 @@ type KubernetesNamespaceSource struct {
 	excluded map[string]struct{}
 	fluxNS   string
 	client   *http.Client
+}
+
+// kubernetesRateLimiter is a context-aware token bucket at the HTTP transport
+// boundary. It covers list, watch, and explicit-namespace requests uniformly.
+type kubernetesRateLimiter struct {
+	mu     sync.Mutex
+	qps    float64
+	burst  float64
+	tokens float64
+	last   time.Time
+}
+
+func newKubernetesRateLimiter(qps float64, burst int) *kubernetesRateLimiter {
+	if qps <= 0 || burst <= 0 {
+		return nil
+	}
+	now := time.Now()
+	return &kubernetesRateLimiter{qps: qps, burst: float64(burst), tokens: float64(burst), last: now}
+}
+
+func (l *kubernetesRateLimiter) wait(ctx context.Context) error {
+	if l == nil {
+		return nil
+	}
+	for {
+		l.mu.Lock()
+		now := time.Now()
+		elapsed := now.Sub(l.last).Seconds()
+		if elapsed > 0 {
+			l.tokens = minFloat(l.burst, l.tokens+elapsed*l.qps)
+			l.last = now
+		}
+		if l.tokens >= 1 {
+			l.tokens--
+			l.mu.Unlock()
+			return nil
+		}
+		wait := time.Duration((1 - l.tokens) / l.qps * float64(time.Second))
+		l.mu.Unlock()
+		timer := time.NewTimer(wait)
+		select {
+		case <-ctx.Done():
+			if !timer.Stop() {
+				<-timer.C
+			}
+			return ctx.Err()
+		case <-timer.C:
+		}
+	}
+}
+
+func minFloat(a, b float64) float64 {
+	if a < b {
+		return a
+	}
+	return b
+}
+
+type rateLimitedTransport struct {
+	base    http.RoundTripper
+	limiter *kubernetesRateLimiter
+}
+
+func (t *rateLimitedTransport) RoundTrip(req *http.Request) (*http.Response, error) {
+	if err := t.limiter.wait(req.Context()); err != nil {
+		return nil, err
+	}
+	return t.base.RoundTrip(req)
 }
 
 type Namespace struct {
@@ -280,15 +349,25 @@ func NewKubernetesNamespaceSourceFromConfig(cfg Config) (*KubernetesNamespaceSou
 	if err != nil {
 		return nil, err
 	}
-	source := NewKubernetesNamespaceSource(cfg.KubernetesAPIURL, token, cfg.NamespaceSelector, cfg.Namespaces, client, cfg.ExcludedNamespaces...)
+	source := NewKubernetesNamespaceSourceWithRateLimit(cfg.KubernetesAPIURL, token, cfg.NamespaceSelector, cfg.Namespaces, client, cfg.KubernetesQPS, cfg.KubernetesBurst, cfg.ExcludedNamespaces...)
 	source.fluxNS = cfg.FluxNamespace
 	return source, nil
 }
 
 func NewKubernetesNamespaceSource(apiURL, token, selector string, namespaces []string, client *http.Client, excludedNamespaces ...string) *KubernetesNamespaceSource {
+	return NewKubernetesNamespaceSourceWithRateLimit(apiURL, token, selector, namespaces, client, defaultKubernetesQPS, defaultKubernetesBurst, excludedNamespaces...)
+}
+
+func NewKubernetesNamespaceSourceWithRateLimit(apiURL, token, selector string, namespaces []string, client *http.Client, qps float64, burst int, excludedNamespaces ...string) *KubernetesNamespaceSource {
 	if client == nil {
 		client = http.DefaultClient
 	}
+	clonedClient := *client
+	baseTransport := clonedClient.Transport
+	if baseTransport == nil {
+		baseTransport = http.DefaultTransport
+	}
+	clonedClient.Transport = &rateLimitedTransport{base: baseTransport, limiter: newKubernetesRateLimiter(qps, burst)}
 	allowed := make(map[string]struct{}, len(namespaces))
 	for _, namespace := range namespaces {
 		if name := strings.TrimSpace(namespace); name != "" {
@@ -308,7 +387,7 @@ func NewKubernetesNamespaceSource(apiURL, token, selector string, namespaces []s
 		allowed:  allowed,
 		excluded: excluded,
 		fluxNS:   "flux-system",
-		client:   client,
+		client:   &clonedClient,
 	}
 }
 

@@ -16,6 +16,8 @@ const (
 	defaultServiceAccountToken = "/var/run/secrets/kubernetes.io/serviceaccount/token"
 	defaultServiceAccountCA    = "/var/run/secrets/kubernetes.io/serviceaccount/ca.crt"
 	defaultExcludedNamespaces  = "default,kube-system,kube-public,kube-node-lease,local-path-storage,ingress-nginx,kubernetes-dashboard,envpilot,envpilot-system"
+	defaultKubernetesQPS       = 20.0
+	defaultKubernetesBurst     = 40
 )
 
 type Config struct {
@@ -44,6 +46,8 @@ type Config struct {
 	ResyncInterval            time.Duration
 	ReportTimeout             time.Duration
 	HeartbeatInterval         time.Duration
+	KubernetesQPS             float64
+	KubernetesBurst           int
 	RemoteGeneration          int64
 }
 
@@ -116,6 +120,8 @@ func ConfigFromEnv() Config {
 		ResyncInterval:     time.Duration(getenvInt("ENVPILOT_AGENT_RESYNC_SECONDS", 30)) * time.Second,
 		ReportTimeout:      time.Duration(getenvInt("ENVPILOT_AGENT_REPORT_TIMEOUT_SECONDS", 10)) * time.Second,
 		HeartbeatInterval:  time.Duration(getenvInt("ENVPILOT_AGENT_HEARTBEAT_SECONDS", 30)) * time.Second,
+		KubernetesQPS:      getenvFloat("ENVPILOT_KUBERNETES_QPS", defaultKubernetesQPS),
+		KubernetesBurst:    getenvInt("ENVPILOT_KUBERNETES_BURST", defaultKubernetesBurst),
 		RemoteGeneration:   int64(getenvInt("ENVPILOT_REMOTE_GENERATION", 0)),
 	}
 	cfg.EnvDiagnostics = legacyDiagnostics()
@@ -154,6 +160,12 @@ func (c Config) Validate() error {
 	}
 	if c.HeartbeatInterval <= 0 {
 		return fmt.Errorf("heartbeat interval must be positive")
+	}
+	if c.KubernetesQPS < 0 || (c.KubernetesQPS == 0 && c.KubernetesBurst != 0) {
+		return fmt.Errorf("kubernetes qps must be positive or zero with zero burst")
+	}
+	if c.KubernetesQPS > 0 && c.KubernetesBurst <= 0 {
+		return fmt.Errorf("kubernetes burst must be positive when qps is enabled")
 	}
 	return nil
 }
@@ -255,6 +267,18 @@ func getenvInt(key string, fallback int) int {
 		return fallback
 	}
 	parsed, err := strconv.Atoi(value)
+	if err != nil {
+		return fallback
+	}
+	return parsed
+}
+
+func getenvFloat(key string, fallback float64) float64 {
+	value := getenv(key, "")
+	if value == "" {
+		return fallback
+	}
+	parsed, err := strconv.ParseFloat(value, 64)
 	if err != nil {
 		return fallback
 	}
