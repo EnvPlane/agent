@@ -452,134 +452,86 @@ func (s *KubernetesNamespaceSource) WatchNamespaces(ctx context.Context, handle 
 
 func (s *KubernetesNamespaceSource) ListDeployments(ctx context.Context, namespace string) ([]Deployment, error) {
 	endpoint := s.apiURL + "/apis/apps/v1/namespaces/" + url.PathEscape(namespace) + "/deployments"
-	req, err := s.newKubernetesGET(ctx, endpoint)
-	if err != nil {
-		return nil, err
-	}
-	resp, err := s.client.Do(req)
-	if err != nil {
-		return nil, err
-	}
-	defer resp.Body.Close()
-	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
-		body, _ := io.ReadAll(io.LimitReader(resp.Body, 4096))
-		return nil, fmt.Errorf("list deployments failed: namespace=%s status=%d body=%s", namespace, resp.StatusCode, strings.TrimSpace(string(body)))
-	}
-	var list deploymentList
-	if err := json.NewDecoder(resp.Body).Decode(&list); err != nil {
-		return nil, fmt.Errorf("decode deployment list: %w", err)
-	}
-	return list.Items, nil
+	items := make([]Deployment, 0)
+	err := s.listPages(ctx, endpoint, "deployments", func(raw json.RawMessage) error {
+		var item Deployment
+		if err := json.Unmarshal(raw, &item); err != nil {
+			return err
+		}
+		items = append(items, item)
+		return nil
+	})
+	return items, err
 }
 
 func (s *KubernetesNamespaceSource) ListPods(ctx context.Context, namespace string) ([]Pod, error) {
 	endpoint := s.apiURL + "/api/v1/namespaces/" + url.PathEscape(namespace) + "/pods"
-	req, err := s.newKubernetesGET(ctx, endpoint)
-	if err != nil {
-		return nil, err
-	}
-	resp, err := s.client.Do(req)
-	if err != nil {
-		return nil, err
-	}
-	defer resp.Body.Close()
-	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
-		body, _ := io.ReadAll(io.LimitReader(resp.Body, 4096))
-		return nil, fmt.Errorf("list pods failed: namespace=%s status=%d body=%s", namespace, resp.StatusCode, strings.TrimSpace(string(body)))
-	}
-	var list podList
-	if err := json.NewDecoder(resp.Body).Decode(&list); err != nil {
-		return nil, fmt.Errorf("decode pod list: %w", err)
-	}
-	return list.Items, nil
+	items := make([]Pod, 0)
+	err := s.listPages(ctx, endpoint, "pods", func(raw json.RawMessage) error {
+		var item Pod
+		if err := json.Unmarshal(raw, &item); err != nil {
+			return err
+		}
+		items = append(items, item)
+		return nil
+	})
+	return items, err
 }
 
 func (s *KubernetesNamespaceSource) ListIngresses(ctx context.Context, namespace string) ([]Ingress, error) {
 	endpoint := s.apiURL + "/apis/networking.k8s.io/v1/namespaces/" + url.PathEscape(namespace) + "/ingresses"
-	req, err := s.newKubernetesGET(ctx, endpoint)
-	if err != nil {
-		return nil, err
-	}
-	resp, err := s.client.Do(req)
-	if err != nil {
-		return nil, err
-	}
-	defer resp.Body.Close()
-	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
-		body, _ := io.ReadAll(io.LimitReader(resp.Body, 4096))
-		return nil, fmt.Errorf("list ingresses failed: namespace=%s status=%d body=%s", namespace, resp.StatusCode, strings.TrimSpace(string(body)))
-	}
-	var list ingressList
-	if err := json.NewDecoder(resp.Body).Decode(&list); err != nil {
-		return nil, fmt.Errorf("decode ingress list: %w", err)
-	}
-	return list.Items, nil
+	items := make([]Ingress, 0)
+	err := s.listPages(ctx, endpoint, "ingresses", func(raw json.RawMessage) error {
+		var item Ingress
+		if err := json.Unmarshal(raw, &item); err != nil {
+			return err
+		}
+		items = append(items, item)
+		return nil
+	})
+	return items, err
 }
 
 func (s *KubernetesNamespaceSource) ListEvents(ctx context.Context, namespace string) ([]KubernetesEvent, error) {
 	endpoint := s.apiURL + "/api/v1/namespaces/" + url.PathEscape(namespace) + "/events"
-	req, err := s.newKubernetesGET(ctx, endpoint)
-	if err != nil {
-		return nil, err
-	}
-	resp, err := s.client.Do(req)
-	if err != nil {
-		return nil, err
-	}
-	defer resp.Body.Close()
-	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
-		body, _ := io.ReadAll(io.LimitReader(resp.Body, 4096))
-		return nil, fmt.Errorf("list events failed: namespace=%s status=%d body=%s", namespace, resp.StatusCode, strings.TrimSpace(string(body)))
-	}
-	var list eventList
-	if err := json.NewDecoder(resp.Body).Decode(&list); err != nil {
-		return nil, fmt.Errorf("decode event list: %w", err)
-	}
-	return list.Items, nil
+	items := make([]KubernetesEvent, 0)
+	err := s.listPages(ctx, endpoint, "events", func(raw json.RawMessage) error {
+		var item KubernetesEvent
+		if err := json.Unmarshal(raw, &item); err != nil {
+			return err
+		}
+		items = append(items, item)
+		return nil
+	})
+	return items, err
 }
 
 func (s *KubernetesNamespaceSource) ListFluxKustomizations(ctx context.Context, namespace string) ([]FluxKustomization, error) {
 	endpoint := s.apiURL + "/apis/kustomize.toolkit.fluxcd.io/v1/namespaces/" + url.PathEscape(namespace) + "/kustomizations"
-	req, err := s.newKubernetesGET(ctx, endpoint)
-	if err != nil {
-		return nil, err
-	}
-	resp, err := s.client.Do(req)
-	if err != nil {
-		return nil, err
-	}
-	defer resp.Body.Close()
-	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
-		body, _ := io.ReadAll(io.LimitReader(resp.Body, 4096))
-		return nil, fmt.Errorf("list flux kustomizations failed: namespace=%s status=%d body=%s", namespace, resp.StatusCode, strings.TrimSpace(string(body)))
-	}
-	var list fluxKustomizationList
-	if err := json.NewDecoder(resp.Body).Decode(&list); err != nil {
-		return nil, fmt.Errorf("decode flux kustomization list: %w", err)
-	}
-	return list.Items, nil
+	items := make([]FluxKustomization, 0)
+	err := s.listPages(ctx, endpoint, "flux kustomizations", func(raw json.RawMessage) error {
+		var item FluxKustomization
+		if err := json.Unmarshal(raw, &item); err != nil {
+			return err
+		}
+		items = append(items, item)
+		return nil
+	})
+	return items, err
 }
 
 func (s *KubernetesNamespaceSource) ListHelmReleases(ctx context.Context, namespace string) ([]HelmRelease, error) {
 	endpoint := s.apiURL + "/apis/helm.toolkit.fluxcd.io/v2/namespaces/" + url.PathEscape(namespace) + "/helmreleases"
-	req, err := s.newKubernetesGET(ctx, endpoint)
-	if err != nil {
-		return nil, err
-	}
-	resp, err := s.client.Do(req)
-	if err != nil {
-		return nil, err
-	}
-	defer resp.Body.Close()
-	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
-		body, _ := io.ReadAll(io.LimitReader(resp.Body, 4096))
-		return nil, fmt.Errorf("list helm releases failed: namespace=%s status=%d body=%s", namespace, resp.StatusCode, strings.TrimSpace(string(body)))
-	}
-	var list helmReleaseList
-	if err := json.NewDecoder(resp.Body).Decode(&list); err != nil {
-		return nil, fmt.Errorf("decode helm release list: %w", err)
-	}
-	return list.Items, nil
+	items := make([]HelmRelease, 0)
+	err := s.listPages(ctx, endpoint, "helm releases", func(raw json.RawMessage) error {
+		var item HelmRelease
+		if err := json.Unmarshal(raw, &item); err != nil {
+			return err
+		}
+		items = append(items, item)
+		return nil
+	})
+	return items, err
 }
 
 func (s *KubernetesNamespaceSource) FluxNamespace() string {
@@ -755,6 +707,60 @@ func (s *KubernetesNamespaceSource) newKubernetesGET(ctx context.Context, endpoi
 		req.Header.Set("Authorization", "Bearer "+s.token)
 	}
 	return req, nil
+}
+
+type pagedList struct {
+	Items    []json.RawMessage `json:"items"`
+	Metadata struct {
+		Continue string `json:"continue"`
+	} `json:"metadata"`
+}
+
+// listPages bounds each Kubernetes response and follows the server-provided
+// continuation token so large namespaces cannot cause unbounded allocations.
+func (s *KubernetesNamespaceSource) listPages(ctx context.Context, endpoint, resource string, decode func(json.RawMessage) error) error {
+	continuation := ""
+	for {
+		parsed, err := url.Parse(endpoint)
+		if err != nil {
+			return err
+		}
+		query := parsed.Query()
+		query.Set("limit", "500")
+		if continuation != "" {
+			query.Set("continue", continuation)
+		}
+		parsed.RawQuery = query.Encode()
+		req, err := s.newKubernetesGET(ctx, parsed.String())
+		if err != nil {
+			return err
+		}
+		resp, err := s.client.Do(req)
+		if err != nil {
+			return err
+		}
+		body, readErr := io.ReadAll(io.LimitReader(resp.Body, 8<<20))
+		resp.Body.Close()
+		if readErr != nil {
+			return fmt.Errorf("read %s list: %w", resource, readErr)
+		}
+		if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+			return fmt.Errorf("list %s failed: status=%d body=%s", resource, resp.StatusCode, strings.TrimSpace(string(body)))
+		}
+		var page pagedList
+		if err := json.Unmarshal(body, &page); err != nil {
+			return fmt.Errorf("decode %s list: %w", resource, err)
+		}
+		for _, raw := range page.Items {
+			if err := decode(raw); err != nil {
+				return fmt.Errorf("decode %s item: %w", resource, err)
+			}
+		}
+		continuation = page.Metadata.Continue
+		if continuation == "" {
+			return nil
+		}
+	}
 }
 
 func (s *KubernetesNamespaceSource) allowedNamespace(name string) bool {

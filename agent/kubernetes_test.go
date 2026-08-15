@@ -164,6 +164,38 @@ func TestKubernetesNamespaceSourceListsDeploymentsPodsAndIngresses(t *testing.T)
 	}
 }
 
+func TestKubernetesNamespaceSourceFollowsResourceContinuationTokens(t *testing.T) {
+	var requests int
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		requests++
+		if got := r.URL.Query().Get("limit"); got != "500" {
+			t.Fatalf("limit = %q, want 500", got)
+		}
+		switch requests {
+		case 1:
+			if got := r.URL.Query().Get("continue"); got != "" {
+				t.Fatalf("first continue token = %q", got)
+			}
+			_, _ = w.Write([]byte(`{"items":[{"metadata":{"name":"first"}}],"metadata":{"continue":"next-page"}}`))
+		case 2:
+			if got := r.URL.Query().Get("continue"); got != "next-page" {
+				t.Fatalf("second continue token = %q", got)
+			}
+			_, _ = w.Write([]byte(`{"items":[{"metadata":{"name":"second"}}],"metadata":{}}`))
+		}
+	}))
+	defer server.Close()
+
+	source := NewKubernetesNamespaceSource(server.URL, "token", "", nil, server.Client())
+	items, err := source.ListDeployments(context.Background(), "envpilot")
+	if err != nil {
+		t.Fatalf("list deployments: %v", err)
+	}
+	if requests != 2 || len(items) != 2 || items[1].Metadata.Name != "second" {
+		t.Fatalf("requests=%d items=%#v", requests, items)
+	}
+}
+
 func TestKubernetesNamespaceSourceListsEvents(t *testing.T) {
 	var gotPath string
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
