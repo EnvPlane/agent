@@ -46,6 +46,10 @@ func (s *ResourceDiscoveryScanner) Scan(ctx context.Context, namespaces []string
 	gitRepositories := make([]fluxResource, 0)
 
 	for _, namespace := range normalizedNamespaces {
+		if !s.source.allowedNamespace(namespace) {
+			warnings = append(warnings, fmt.Sprintf("%s: namespace not in agent watch scope", namespace))
+			continue
+		}
 		namespaceSnapshot, warning, err := s.getNamespaceResource(ctx, namespace)
 		if err != nil {
 			return ResourceScanResult{}, err
@@ -140,7 +144,7 @@ func (s *ResourceDiscoveryScanner) Scan(ctx context.Context, namespaces []string
 			Namespace:     item.Namespace,
 			Name:          item.Name,
 			Labels:        item.Labels,
-			Annotations:   item.Annotations,
+			Annotations:   sanitizeResourceAnnotations("Kustomization", item.Annotations),
 			SourceMapping: source,
 		})
 	}
@@ -151,7 +155,7 @@ func (s *ResourceDiscoveryScanner) Scan(ctx context.Context, namespaces []string
 			Namespace:     item.Namespace,
 			Name:          item.Name,
 			Labels:        item.Labels,
-			Annotations:   item.Annotations,
+			Annotations:   sanitizeResourceAnnotations("HelmRelease", item.Annotations),
 			SourceMapping: source,
 		})
 	}
@@ -161,7 +165,7 @@ func (s *ResourceDiscoveryScanner) Scan(ctx context.Context, namespaces []string
 			Namespace:   item.Namespace,
 			Name:        item.Name,
 			Labels:      item.Labels,
-			Annotations: item.Annotations,
+			Annotations: sanitizeResourceAnnotations("GitRepository", item.Annotations),
 		})
 	}
 	for index := range items {
@@ -239,7 +243,7 @@ func (s *ResourceDiscoveryScanner) getNamespaceResource(ctx context.Context, nam
 		Namespace:   name,
 		Name:        name,
 		Labels:      payload.Metadata.Labels,
-		Annotations: payload.Metadata.Annotations,
+		Annotations: sanitizeResourceAnnotations("Namespace", payload.Metadata.Annotations),
 		Manifest:    sanitizeResourceManifest("Namespace", raw, name, name),
 	}, "", nil
 }
@@ -361,7 +365,7 @@ func (s *ResourceDiscoveryScanner) listNamespaceResources(ctx context.Context, n
 			Namespace:       ns,
 			Name:            name,
 			Labels:          item.Metadata.Labels,
-			Annotations:     item.Metadata.Annotations,
+			Annotations:     sanitizeResourceAnnotations(kind, item.Metadata.Annotations),
 			Manifest:        rawManifest,
 			OwnerReferences: item.Metadata.OwnerReferences,
 			Selector:        selector,
@@ -508,7 +512,7 @@ func sanitizeResourceManifest(kind string, raw map[string]any, namespace string,
 		if labels := normalizeStringAnyMap(metaRaw["labels"]); len(labels) > 0 {
 			metadata["labels"] = labels
 		}
-		if annotations := normalizeStringAnyMap(metaRaw["annotations"]); len(annotations) > 0 {
+		if annotations := sanitizeResourceAnnotationsAny(kind, metaRaw["annotations"]); len(annotations) > 0 {
 			metadata["annotations"] = annotations
 		}
 	}
@@ -528,14 +532,43 @@ func sanitizeResourceManifest(kind string, raw map[string]any, namespace string,
 		manifest["spec"] = spec
 	}
 	if kind == "ConfigMap" {
-		if data, ok := deepCopyJSONValue(raw["data"]).(map[string]any); ok && len(data) > 0 {
-			manifest["data"] = data
-		}
-		if binaryData, ok := deepCopyJSONValue(raw["binaryData"]).(map[string]any); ok && len(binaryData) > 0 {
-			manifest["binaryData"] = binaryData
-		}
+		// ConfigMap values are intentionally never exported. The key lists are
+		// carried separately in ConfigMapKeys for graph construction.
 	}
 	return manifest
+}
+
+func sanitizeResourceAnnotations(kind string, annotations map[string]string) map[string]string {
+	if strings.EqualFold(strings.TrimSpace(kind), "Secret") || len(annotations) == 0 {
+		return nil
+	}
+	result := make(map[string]string)
+	for key, value := range annotations {
+		key = strings.TrimSpace(key)
+		if key == "" || len(key) > 256 || len(value) > 2048 || strings.EqualFold(key, "kubectl.kubernetes.io/last-applied-configuration") || strings.HasSuffix(key, ".kubernetes.io/last-applied-configuration") {
+			continue
+		}
+		result[key] = value
+	}
+	return result
+}
+
+func sanitizeResourceAnnotationsAny(kind string, value any) map[string]any {
+	raw, ok := value.(map[string]any)
+	if !ok {
+		return nil
+	}
+	result := make(map[string]any)
+	for key, item := range raw {
+		text, ok := item.(string)
+		if !ok {
+			continue
+		}
+		if sanitized := sanitizeResourceAnnotations(kind, map[string]string{key: text}); len(sanitized) == 1 {
+			result[key] = text
+		}
+	}
+	return result
 }
 
 // defaultResourceAPIVersion keeps scanner-derived manifests valid when a
@@ -762,7 +795,7 @@ func parseResourceEnvVar(item struct {
 	}
 	result := domain.ResourceEnvVar{
 		Name:  name,
-		Value: strings.TrimSpace(item.Value),
+		Value: redactInlineEnvValue(name, item.Value),
 	}
 	if len(item.ValueFrom) == 0 {
 		return result, true
@@ -792,6 +825,19 @@ func parseResourceEnvVar(item struct {
 		return result, true
 	}
 	return result, true
+}
+
+func redactInlineEnvValue(name, value string) string {
+	if strings.TrimSpace(value) == "" {
+		return ""
+	}
+	upper := strings.ToUpper(strings.TrimSpace(name))
+	for _, marker := range []string{"PASSWORD", "PASSWD", "SECRET", "TOKEN", "API_KEY", "PRIVATE_KEY", "DATABASE_URL", "CONNECTION_STRING"} {
+		if strings.Contains(upper, marker) {
+			return "[REDACTED]"
+		}
+	}
+	return "[REDACTED]"
 }
 
 func asAnyString(value any) string {
@@ -892,7 +938,7 @@ func (s *ResourceDiscoveryScanner) listFluxKustomizations(ctx context.Context, n
 			Namespace:   ns,
 			Name:        name,
 			Labels:      item.Metadata.Labels,
-			Annotations: item.Metadata.Annotations,
+			Annotations: sanitizeResourceAnnotations("Kustomization", item.Metadata.Annotations),
 			SourceRef:   normalizeFluxSourceRef(item.Spec.SourceRef, ns),
 		})
 	}
