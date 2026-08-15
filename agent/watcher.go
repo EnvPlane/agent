@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"log/slog"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/envpilot/contracts/domain"
@@ -93,13 +94,45 @@ func (w *NamespaceWatcher) SyncOnce(ctx context.Context) error {
 	if err != nil {
 		return err
 	}
-	var syncErr error
+	workers := len(namespaces)
+	if workers > 8 {
+		workers = 8
+	}
+	if workers == 0 {
+		return nil
+	}
+	queue := make(chan Namespace)
+	var wg sync.WaitGroup
+	var firstErr error
+	var errMu sync.Mutex
+	for i := 0; i < workers; i++ {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			for namespace := range queue {
+				if err := w.reportEvent(ctx, "SYNC", namespace); err != nil {
+					errMu.Lock()
+					if firstErr == nil {
+						firstErr = err
+					}
+					errMu.Unlock()
+					w.logger.Error("namespace status report failed", "namespace", namespace.Metadata.Name, "error", err)
+				}
+			}
+		}()
+	}
 	for _, namespace := range namespaces {
-		if err := w.reportEvent(ctx, "SYNC", namespace); err != nil {
-			syncErr = err
-			w.logger.Error("namespace status report failed", "namespace", namespace.Metadata.Name, "error", err)
+		select {
+		case queue <- namespace:
+		case <-ctx.Done():
+			close(queue)
+			wg.Wait()
+			return ctx.Err()
 		}
 	}
+	close(queue)
+	wg.Wait()
+	var syncErr = firstErr
 	return syncErr
 }
 
