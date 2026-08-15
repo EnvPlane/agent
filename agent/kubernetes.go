@@ -764,9 +764,13 @@ func newKubernetesHTTPClient(caPath string) (*http.Client, error) {
 			certPool = x509.NewCertPool()
 		}
 		if pem, err := os.ReadFile(ca); err == nil {
-			certPool.AppendCertsFromPEM(pem)
+			if ok := certPool.AppendCertsFromPEM(pem); !ok {
+				return nil, fmt.Errorf("kubernetes CA file contains no certificates")
+			}
 			transport.TLSClientConfig = &tls.Config{RootCAs: certPool, MinVersion: tls.VersionTLS12}
-		} else if !os.IsNotExist(err) {
+		} else if os.IsNotExist(err) && ca == defaultServiceAccountCA && strings.TrimSpace(os.Getenv("KUBERNETES_SERVICE_HOST")) == "" {
+			// Local/out-of-cluster development may not have the in-cluster mount.
+		} else if err != nil {
 			return nil, fmt.Errorf("read kubernetes ca file: %w", err)
 		}
 	}
