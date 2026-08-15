@@ -90,7 +90,7 @@ func CheckControlPlaneHealthWithCAFile(ctx context.Context, controlPlaneURL stri
 	if err != nil {
 		return fmt.Errorf("endpoint_unreachable: reach control-plane health endpoint: %w", err)
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 	if resp.StatusCode < http.StatusOK || resp.StatusCode >= http.StatusMultipleChoices {
 		return fmt.Errorf("endpoint_unhealthy: control-plane health endpoint returned status %d", resp.StatusCode)
 	}
@@ -180,7 +180,7 @@ func ProbeManagementEndpoint(ctx context.Context, cfg Config, reporter *HTTPStat
 		report.Code = classifyEndpointProbeError(err)
 		return report
 	}
-	defer response.Body.Close()
+	defer func() { _ = response.Body.Close() }()
 	report.DNSResolved, report.TCPConnected = true, true
 	if strings.HasPrefix(strings.ToLower(cfg.ControlPlaneURL), "https://") {
 		report.TLSVerified = true

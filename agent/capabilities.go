@@ -106,7 +106,7 @@ func (s *KubernetesNamespaceSource) discoverKubernetesVersion(ctx context.Contex
 	if err != nil {
 		return ""
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
 		return ""
 	}
@@ -126,7 +126,7 @@ func (s *KubernetesNamespaceSource) apiEndpointAvailable(ctx context.Context, pa
 	if err != nil {
 		return false, err
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 	_, _ = io.Copy(io.Discard, io.LimitReader(resp.Body, 4096))
 	if resp.StatusCode == http.StatusNotFound || resp.StatusCode == http.StatusForbidden {
 		return false, nil

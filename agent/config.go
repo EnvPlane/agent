@@ -138,13 +138,13 @@ func (c Config) Validate() error {
 		return fmt.Errorf("ENVPLANE_CLUSTER_ID is required")
 	}
 	if strings.TrimSpace(c.AgentID) == "" {
-		return fmt.Errorf("ENVPLANE_AGENT_ID is required")
+		return fmt.Errorf("envplane agent id is required")
 	}
 	if strings.TrimSpace(c.RegistrationToken) == "" && strings.TrimSpace(c.AgentAuthToken) == "" {
 		return fmt.Errorf("set ENVPLANE_AGENT_REGISTRATION_TOKEN or ENVPLANE_AGENT_AUTH_TOKEN")
 	}
 	if strings.TrimSpace(c.KubernetesAPIURL) == "" {
-		return fmt.Errorf("Kubernetes API URL is required; set ENVPLANE_KUBERNETES_API_URL outside the cluster")
+		return fmt.Errorf("kubernetes API URL is required; set ENVPLANE_KUBERNETES_API_URL outside the cluster")
 	}
 	if c.ResyncInterval <= 0 {
 		return fmt.Errorf("resync interval must be positive")
