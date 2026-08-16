@@ -38,7 +38,7 @@ func main() {
 func runAgent(logger *slog.Logger) {
 	cfg := clusteragent.ConfigFromEnv()
 	if len(cfg.EnvDiagnostics) > 0 {
-		logger.Warn("deprecated EnvPilot configuration variables are in use", "variables", cfg.EnvDiagnostics)
+		logger.Warn("deprecated legacy configuration variables are in use", "variables", cfg.EnvDiagnostics)
 	}
 	if err := cfg.Validate(); err != nil {
 		logger.Error("invalid agent configuration", "error", err)
