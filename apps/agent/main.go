@@ -118,7 +118,7 @@ func runAgentInstallCheck(logger *slog.Logger) {
 // will run after installation, without consuming a one-time bootstrap token.
 func runAgentConnectivityCheck(logger *slog.Logger) {
 	cfg := clusteragent.ConfigFromEnv()
-	if err := clusteragent.ValidateControlPlaneEndpoint(cfg.ControlPlaneURL, cfg.ControlPlaneEndpointMode); err != nil {
+	if err := clusteragent.ValidateControlPlaneEndpointWithPolicy(cfg.ControlPlaneURL, cfg.ControlPlaneEndpointMode, cfg.AllowInsecureControlPlane); err != nil {
 		logger.Error("agent control-plane connectivity check failed", "error", err)
 		os.Exit(1)
 	}
