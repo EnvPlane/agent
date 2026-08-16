@@ -164,7 +164,7 @@ func (r *HTTPStatusReporter) ReportEvents(ctx context.Context, environmentID str
 	if err != nil {
 		return err
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
 		responseBody, _ := io.ReadAll(io.LimitReader(resp.Body, 4096))
 		return fmt.Errorf("report kubernetes events failed: environment=%s status=%d body=%s", environmentID, resp.StatusCode, strings.TrimSpace(string(responseBody)))
@@ -194,7 +194,7 @@ func (r *HTTPStatusReporter) ReportFluxStatus(ctx context.Context, environmentID
 	if err != nil {
 		return err
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
 		responseBody, _ := io.ReadAll(io.LimitReader(resp.Body, 4096))
 		return fmt.Errorf("report flux status failed: environment=%s status=%d body=%s", environmentID, resp.StatusCode, strings.TrimSpace(string(responseBody)))
@@ -272,7 +272,7 @@ func (r *HTTPStatusReporter) CheckRuntimeAccess(ctx context.Context, cfg Config)
 	if err != nil {
 		return err
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 	if resp.StatusCode != http.StatusNoContent {
 		return fmt.Errorf("runtime access denied")
 	}
@@ -343,7 +343,7 @@ func (r *HTTPStatusReporter) FetchResourceScanTask(ctx context.Context, cfg Conf
 	if err != nil {
 		return nil, err
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 	if resp.StatusCode == http.StatusNoContent {
 		return nil, nil
 	}
@@ -387,7 +387,7 @@ func (r *HTTPStatusReporter) postJSONDecodeWithBearer(ctx context.Context, path 
 	if err != nil {
 		return err
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
 		responseBody, _ := io.ReadAll(io.LimitReader(resp.Body, 4096))
 		var apiError APIError

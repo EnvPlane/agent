@@ -412,9 +412,12 @@ func (s *KubernetesNamespaceSource) listNamespaces(ctx context.Context) ([]Names
 			return nil, nil, err
 		}
 		body, readErr := io.ReadAll(io.LimitReader(resp.Body, 4<<20))
-		resp.Body.Close()
+		closeErr := resp.Body.Close()
 		if readErr != nil {
 			return nil, nil, fmt.Errorf("read namespace list: %w", readErr)
+		}
+		if closeErr != nil {
+			return nil, nil, fmt.Errorf("close namespace list response: %w", closeErr)
 		}
 		if resp.StatusCode < 200 || resp.StatusCode >= 300 {
 			return nil, nil, fmt.Errorf("list namespaces failed: status=%d body=%s", resp.StatusCode, strings.TrimSpace(string(body)))
@@ -469,9 +472,12 @@ func (s *KubernetesNamespaceSource) listExplicitNamespaces(ctx context.Context) 
 			return nil, nil, err
 		}
 		body, readErr := io.ReadAll(io.LimitReader(resp.Body, 1<<20))
-		resp.Body.Close()
+		closeErr := resp.Body.Close()
 		if readErr != nil {
 			return nil, nil, fmt.Errorf("read namespace %s: %w", name, readErr)
+		}
+		if closeErr != nil {
+			return nil, nil, fmt.Errorf("close namespace %s response: %w", name, closeErr)
 		}
 		if resp.StatusCode == http.StatusNotFound {
 			continue
@@ -505,7 +511,7 @@ func (s *KubernetesNamespaceSource) WatchNamespaces(ctx context.Context, handle 
 	if err != nil {
 		return err
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
 		body, _ := io.ReadAll(io.LimitReader(resp.Body, 4096))
 		return fmt.Errorf("watch namespaces failed: status=%d body=%s", resp.StatusCode, strings.TrimSpace(string(body)))
@@ -629,9 +635,6 @@ func (s *KubernetesNamespaceSource) ListIngressControllers(ctx context.Context) 
 			Controller string `json:"controller"`
 		} `json:"spec"`
 	}
-	type ingressClassList struct {
-		Items []ingressClass `json:"items"`
-	}
 	endpoint := s.apiURL + "/apis/networking.k8s.io/v1/ingressclasses"
 	controllers := make([]string, 0)
 	seen := map[string]struct{}{}
@@ -667,9 +670,6 @@ func (s *KubernetesNamespaceSource) ListCRDNames(ctx context.Context) ([]string,
 			Name string `json:"name"`
 		} `json:"metadata"`
 	}
-	type crdList struct {
-		Items []crdItem `json:"items"`
-	}
 	endpoint := s.apiURL + "/apis/apiextensions.k8s.io/v1/customresourcedefinitions"
 	names := make([]string, 0)
 	err := s.listPages(ctx, endpoint, "customresourcedefinitions.apiextensions.k8s.io", func(raw json.RawMessage) error {
@@ -694,9 +694,6 @@ func (s *KubernetesNamespaceSource) ListStorageClasses(ctx context.Context) ([]s
 		Metadata struct {
 			Name string `json:"name"`
 		} `json:"metadata"`
-	}
-	type storageClassList struct {
-		Items []storageClassItem `json:"items"`
 	}
 	endpoint := s.apiURL + "/apis/storage.k8s.io/v1/storageclasses"
 	names := make([]string, 0)
@@ -792,9 +789,12 @@ func (s *KubernetesNamespaceSource) listPages(ctx context.Context, endpoint, res
 			return err
 		}
 		body, readErr := io.ReadAll(io.LimitReader(resp.Body, 8<<20))
-		resp.Body.Close()
+		closeErr := resp.Body.Close()
 		if readErr != nil {
 			return fmt.Errorf("read %s list: %w", resource, readErr)
+		}
+		if closeErr != nil {
+			return fmt.Errorf("close %s list response: %w", resource, closeErr)
 		}
 		if resp.StatusCode < 200 || resp.StatusCode >= 300 {
 			if resp.StatusCode == http.StatusForbidden {

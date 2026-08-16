@@ -204,7 +204,7 @@ func (s *ResourceDiscoveryScanner) getNamespaceResource(ctx context.Context, nam
 	if err != nil {
 		return domain.ResourceSnapshot{}, "", err
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 	switch resp.StatusCode {
 	case http.StatusForbidden:
 		body, _ := io.ReadAll(io.LimitReader(resp.Body, 4096))
@@ -258,7 +258,7 @@ func (s *ResourceDiscoveryScanner) listNamespaceResources(ctx context.Context, n
 	if err != nil {
 		return nil, "", err
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 	switch resp.StatusCode {
 	case http.StatusForbidden:
 		body, _ := io.ReadAll(io.LimitReader(resp.Body, 4096))
@@ -530,10 +530,6 @@ func sanitizeResourceManifest(kind string, raw map[string]any, namespace string,
 
 	if spec, ok := deepCopyJSONValue(raw["spec"]).(map[string]any); ok && len(spec) > 0 {
 		manifest["spec"] = spec
-	}
-	if kind == "ConfigMap" {
-		// ConfigMap values are intentionally never exported. The key lists are
-		// carried separately in ConfigMapKeys for graph construction.
 	}
 	return manifest
 }
@@ -896,7 +892,7 @@ func (s *ResourceDiscoveryScanner) listFluxKustomizations(ctx context.Context, n
 	if err != nil {
 		return nil, "", err
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 	switch resp.StatusCode {
 	case http.StatusForbidden:
 		body, _ := io.ReadAll(io.LimitReader(resp.Body, 4096))
@@ -955,7 +951,7 @@ func (s *ResourceDiscoveryScanner) listHelmReleases(ctx context.Context, namespa
 	if err != nil {
 		return nil, "", err
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 	switch resp.StatusCode {
 	case http.StatusForbidden:
 		body, _ := io.ReadAll(io.LimitReader(resp.Body, 4096))
@@ -1018,7 +1014,7 @@ func (s *ResourceDiscoveryScanner) listGitRepositories(ctx context.Context, name
 	if err != nil {
 		return nil, "", err
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 	switch resp.StatusCode {
 	case http.StatusForbidden:
 		body, _ := io.ReadAll(io.LimitReader(resp.Body, 4096))
