@@ -40,12 +40,13 @@ jobs:
         with:
           go-version-file: go.mod
           cache: true
+      - name: Use published contracts module
+        run: go mod edit -dropreplace=github.com/envpilot/contracts
       - name: Scan Go dependencies
         uses: golang/govulncheck-action@v1
         with:
           go-package: ./...
-      - name: Use published contracts module
-        run: go mod edit -dropreplace=github.com/envpilot/contracts
+          repo-checkout: false
       - run: go test ./...
       - run: go vet ./...
       - uses: golangci/golangci-lint-action@v7
