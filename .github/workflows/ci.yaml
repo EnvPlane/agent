@@ -41,7 +41,9 @@ jobs:
           go-version-file: go.mod
           cache: true
       - name: Use published contracts module
-        run: go mod edit -dropreplace=github.com/envpilot/contracts
+        run: |
+          go mod edit -dropreplace=github.com/envpilot/contracts
+          go mod tidy
       - name: Scan Go dependencies
         uses: golang/govulncheck-action@v1
         with:
