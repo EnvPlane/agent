@@ -9,30 +9,50 @@ GH_APP_REPOSITORY="${GH_APP_REPOSITORY:-deploy}"
 GH_APP_TOKEN_PERMISSIONS="${GH_APP_TOKEN_PERMISSIONS:-{\"contents\":\"read\"}}"
 GH_API_BASE="https://api.github.com"
 
+trim() {
+  printf '%s' "$1" | sed -E 's/^[[:space:]]+|[[:space:]]+$//g'
+}
+
+strip_matching_quotes() {
+  local v="$1"
+  v="$(trim "$v")"
+  if [[ "${v:0:1}" == "\"" && "${v: -1}" == "\"" && ${#v} -ge 2 ]]; then
+    printf '%s' "${v:1:${#v}-2}"
+  elif [[ "${v:0:1}" == "'" && "${v: -1}" == "'" && ${#v} -ge 2 ]]; then
+    printf '%s' "${v:1:${#v}-2}"
+  else
+    printf '%s' "$v"
+  fi
+}
+
 normalize_permissions_json() {
   local value="${1:-}"
   local extracted
+  local object_candidate
+  local key
+  local pair_value
+  local pair_json
+  local pair_count=0
+  local output_pairs=""
 
-  value="${value//$''/}"
-  value="$(printf '%s' "$value" | sed -E 's/^[[:space:]]+|[[:space:]]+$//g')"
+  value="${value//$'\r'/}"
+  value="$(trim "$value")"
 
   # Peel single-level wrapper quotes repeatedly.
   while :; do
     if [[ -z "$value" ]]; then
       break
     fi
-
     local first_char="${value:0:1}"
     local last_char="${value: -1}"
-
     if [[ "$first_char" == '"' && "$last_char" == '"' && ${#value} -ge 2 ]]; then
       value="${value:1:${#value}-2}"
-      value="$(printf '%s' "$value" | sed -E 's/^[[:space:]]+|[[:space:]]+$//g')"
+      value="$(trim "$value")"
       continue
     fi
     if [[ "$first_char" == "'" && "$last_char" == "'" && ${#value} -ge 2 ]]; then
       value="${value:1:${#value}-2}"
-      value="$(printf '%s' "$value" | sed -E 's/^[[:space:]]+|[[:space:]]+$//g')"
+      value="$(trim "$value")"
       continue
     fi
     break
@@ -49,9 +69,57 @@ normalize_permissions_json() {
     return 0
   fi
 
+  # Fallback: tolerate unquoted YAML-like map fragments like {contents:read,issues:write}
+  if [[ "$value" == *"{"* && "$value" == *"}"* ]]; then
+    object_candidate="$(printf '%s' "$value" | awk 'match($0, /\{.*\}/) { print substr($0, RSTART+1, RLENGTH-2); exit }')"
+    object_candidate="$(trim "$object_candidate")"
+    if [[ -n "$object_candidate" ]]; then
+      while IFS=',' read -r -a raw_pairs <<< "$object_candidate"; do
+        for trimmed_pair in "${raw_pairs[@]}"; do
+          trimmed_pair="$(trim "$trimmed_pair")"
+          if [[ -z "$trimmed_pair" ]]; then
+            continue
+          fi
+
+          if [[ "$trimmed_pair" == *":"* ]]; then
+            key="${trimmed_pair%%:*}"
+            pair_value="${trimmed_pair#*:}"
+          else
+            return 1
+          fi
+
+          key="$(strip_matching_quotes "$key")"
+          if [[ -z "$key" ]] || ! [[ "$key" =~ ^[A-Za-z_][A-Za-z0-9_]*$ ]]; then
+            return 1
+          fi
+
+          pair_value="$(strip_matching_quotes "$pair_value")"
+          if [[ "$pair_value" == "true" || "$pair_value" == "false" || "$pair_value" == "null" || "$pair_value" == "0" || "$pair_value" == "1" ]]; then
+            pair_json="\"$key\":$pair_value"
+          else
+            pair_json="\"$key\":\"$pair_value\""
+          fi
+
+          if [[ $pair_count -gt 0 ]]; then
+            output_pairs+=","
+          fi
+          output_pairs+="$pair_json"
+          pair_count=$((pair_count + 1))
+        done
+      done <<< "$object_candidate"
+    fi
+  fi
+
+  if [[ $pair_count -gt 0 ]]; then
+    extracted="{${output_pairs}}"
+    if jq -e -c . <<<"$extracted" >/dev/null 2>&1; then
+      printf '%s' "$extracted"
+      return 0
+    fi
+  fi
+
   return 1
 }
-
 
 jwt_b64_url() {
   openssl base64 -e -A | tr '/+' '_-' | tr -d '='
@@ -88,8 +156,8 @@ if [[ -z "$installation_id" || "$installation_id" == "null" ]]; then
 fi
 
 if ! GH_APP_TOKEN_PERMISSIONS="$(normalize_permissions_json "$GH_APP_TOKEN_PERMISSIONS")"; then
-  echo "Invalid GH_APP_TOKEN_PERMISSIONS JSON value" >&2
-  exit 1
+  echo "Invalid GH_APP_TOKEN_PERMISSIONS JSON value, using default {\\\"contents\\\":\\\"read\\\"}" >&2
+  GH_APP_TOKEN_PERMISSIONS='{"contents":"read"}'
 fi
 
 permissions_json=$(jq -c -e . <<<"$GH_APP_TOKEN_PERMISSIONS")
