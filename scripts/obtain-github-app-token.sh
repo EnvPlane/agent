@@ -9,6 +9,21 @@ GH_APP_REPOSITORY="${GH_APP_REPOSITORY:-deploy}"
 GH_APP_TOKEN_PERMISSIONS="${GH_APP_TOKEN_PERMISSIONS:-{\"contents\":\"read\"}}"
 GH_API_BASE="https://api.github.com"
 
+# GitHub API calls must never hold a workflow indefinitely.  In particular,
+# codeload/API throttling and transient network failures are common on hosted
+# runners; bound both connection and total request time while allowing a small
+# retry window for retryable responses.
+github_api() {
+  curl -fsS \
+    --connect-timeout 10 \
+    --max-time 30 \
+    --retry 2 \
+    --retry-delay 2 \
+    --retry-max-time 45 \
+    --retry-connrefused \
+    "$@"
+}
+
 trim() {
   printf '%s' "$1" | sed -E 's/^[[:space:]]+|[[:space:]]+$//g'
 }
@@ -142,7 +157,7 @@ unsigned="$(printf '%s' "$header" | jwt_b64_url).$(printf '%s' "$payload" | jwt_
 signature=$(printf '%s' "$unsigned" | openssl dgst -sha256 -sign "$key_path" | openssl base64 -A | tr '/+' '_-' | tr -d '=')
 jwt="${unsigned}.${signature}"
 
-installation=$(curl -fsS \
+installation=$(github_api \
   -H "Authorization: Bearer ${jwt}" \
   -H "Accept: application/vnd.github+json" \
   -H "X-GitHub-Api-Version: 2022-11-28" \
@@ -170,7 +185,7 @@ if ! jq -e 'type == "object"' <<<"$permissions_json" > /dev/null; then
   exit 1
 fi
 permissions_payload="{\"permissions\":${permissions_json}}"
-access=$(curl -fsS \
+access=$(github_api \
   -X POST \
   -H "Authorization: Bearer ${jwt}" \
   -H "Accept: application/vnd.github+json" \
