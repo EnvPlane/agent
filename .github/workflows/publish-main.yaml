@@ -51,7 +51,7 @@ jobs:
           repository: EnvPlane/deploy
           token: ${{ steps.source_read_app.outputs.token }}
           path: deploy
-      - uses: actions/setup-go@v5
+      - uses: actions/setup-go@v7
         with:
           go-version-file: go.mod
           cache: true
