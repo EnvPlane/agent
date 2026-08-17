@@ -6,7 +6,9 @@ set -euo pipefail
 
 GH_APP_OWNER="${GH_APP_OWNER:-EnvPlane}"
 GH_APP_REPOSITORY="${GH_APP_REPOSITORY:-deploy}"
-GH_APP_TOKEN_PERMISSIONS="${GH_APP_TOKEN_PERMISSIONS:-{\"contents\":\"read\"}}"
+if [[ -z "${GH_APP_TOKEN_PERMISSIONS+x}" || -z "${GH_APP_TOKEN_PERMISSIONS}" ]]; then
+  GH_APP_TOKEN_PERMISSIONS='{"contents":"read"}'
+fi
 GH_API_BASE="https://api.github.com"
 
 # GitHub API calls must never hold a workflow indefinitely.  In particular,
@@ -89,39 +91,38 @@ normalize_permissions_json() {
     object_candidate="$(printf '%s' "$value" | awk 'match($0, /\{.*\}/) { print substr($0, RSTART+1, RLENGTH-2); exit }')"
     object_candidate="$(trim "$object_candidate")"
     if [[ -n "$object_candidate" ]]; then
-      while IFS=',' read -r -a raw_pairs <<< "$object_candidate"; do
-        for trimmed_pair in "${raw_pairs[@]}"; do
-          trimmed_pair="$(trim "$trimmed_pair")"
-          if [[ -z "$trimmed_pair" ]]; then
-            continue
-          fi
+      IFS=',' read -r -a raw_pairs <<< "$object_candidate"
+      for trimmed_pair in "${raw_pairs[@]}"; do
+        trimmed_pair="$(trim "$trimmed_pair")"
+        if [[ -z "$trimmed_pair" ]]; then
+          continue
+        fi
 
-          if [[ "$trimmed_pair" == *":"* ]]; then
-            key="${trimmed_pair%%:*}"
-            pair_value="${trimmed_pair#*:}"
-          else
-            return 1
-          fi
+        if [[ "$trimmed_pair" == *":"* ]]; then
+          key="${trimmed_pair%%:*}"
+          pair_value="${trimmed_pair#*:}"
+        else
+          return 1
+        fi
 
-          key="$(strip_matching_quotes "$key")"
-          if [[ -z "$key" ]] || ! [[ "$key" =~ ^[A-Za-z_][A-Za-z0-9_]*$ ]]; then
-            return 1
-          fi
+        key="$(strip_matching_quotes "$key")"
+        if [[ -z "$key" ]] || ! [[ "$key" =~ ^[A-Za-z_][A-Za-z0-9_]*$ ]]; then
+          return 1
+        fi
 
-          pair_value="$(strip_matching_quotes "$pair_value")"
-          if [[ "$pair_value" == "true" || "$pair_value" == "false" || "$pair_value" == "null" || "$pair_value" == "0" || "$pair_value" == "1" ]]; then
-            pair_json="\"$key\":$pair_value"
-          else
-            pair_json="\"$key\":\"$pair_value\""
-          fi
+        pair_value="$(strip_matching_quotes "$pair_value")"
+        if [[ "$pair_value" == "true" || "$pair_value" == "false" || "$pair_value" == "null" || "$pair_value" == "0" || "$pair_value" == "1" ]]; then
+          pair_json="\"$key\":$pair_value"
+        else
+          pair_json="\"$key\":\"$pair_value\""
+        fi
 
-          if [[ $pair_count -gt 0 ]]; then
-            output_pairs+=","
-          fi
-          output_pairs+="$pair_json"
-          pair_count=$((pair_count + 1))
-        done
-      done <<< "$object_candidate"
+        if [[ $pair_count -gt 0 ]]; then
+          output_pairs+=","
+        fi
+        output_pairs+="$pair_json"
+        pair_count=$((pair_count + 1))
+      done
     fi
   fi
 
