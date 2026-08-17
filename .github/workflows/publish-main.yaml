@@ -27,7 +27,7 @@ jobs:
       digest: ${{ steps.published.outputs.digest }}
       metadata: ${{ steps.published.outputs.metadata }}
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v7
       - id: source_read_app
         name: Create source-read GitHub App token
         uses: actions/create-github-app-token@v3
@@ -46,7 +46,7 @@ jobs:
           export GIT_CONFIG_GLOBAL="$RUNNER_TEMP/envpilot-gitconfig"
           echo "GIT_CONFIG_GLOBAL=$GIT_CONFIG_GLOBAL" >> "$GITHUB_ENV"
           git config --global url."https://x-access-token:${SOURCE_TOKEN}@github.com/".insteadOf "https://github.com/"
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v7
         with:
           repository: EnvPlane/deploy
           token: ${{ steps.source_read_app.outputs.token }}
