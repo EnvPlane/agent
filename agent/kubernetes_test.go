@@ -115,7 +115,7 @@ func TestKubernetesNamespaceSourceUsesNamespacedReadsForExplicitAllowlist(t *tes
 	if got, want := []string{items[0].Metadata.Name, items[1].Metadata.Name}, []string{"dev-base", "shared"}; !reflect.DeepEqual(got, want) {
 		t.Fatalf("explicit namespaces = %#v want %#v", got, want)
 	}
-	if !reflect.DeepEqual(paths, []string{"/api/v1/namespaces/dev-base", "/api/v1/namespaces/shared"}) {
+	if !reflect.DeepEqual(paths, []string{"/api/v1/namespaces", "/api/v1/namespaces/dev-base", "/api/v1/namespaces/shared"}) {
 		t.Fatalf("namespace paths = %#v", paths)
 	}
 	if err := source.WatchNamespaces(context.Background(), func(NamespaceEvent) error { return nil }); err != nil {

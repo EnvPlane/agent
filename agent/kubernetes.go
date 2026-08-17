@@ -397,9 +397,6 @@ func (s *KubernetesNamespaceSource) ListNamespaces(ctx context.Context) ([]Names
 }
 
 func (s *KubernetesNamespaceSource) listNamespaces(ctx context.Context) ([]Namespace, []string, error) {
-	if len(s.allowed) > 0 && strings.TrimSpace(s.selector) == "" {
-		return s.listExplicitNamespaces(ctx)
-	}
 	items := make([]Namespace, 0)
 	excluded := make([]string, 0)
 	for continuation := ""; ; {
@@ -420,6 +417,14 @@ func (s *KubernetesNamespaceSource) listNamespaces(ctx context.Context) ([]Names
 			return nil, nil, fmt.Errorf("close namespace list response: %w", closeErr)
 		}
 		if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+			// A finite allowlist may be deployed with either namespaceInventoryRead
+			// (cluster-scoped list) or explicit namespace GET permissions. Try the
+			// safer list path first when it is available; fall back to the explicit
+			// path only for a forbidden list. This keeps capability reports free of
+			// false RBAC warnings while preserving least-privilege deployments.
+			if resp.StatusCode == http.StatusForbidden && len(s.allowed) > 0 && strings.TrimSpace(s.selector) == "" {
+				return s.listExplicitNamespaces(ctx)
+			}
 			return nil, nil, fmt.Errorf("list namespaces failed: status=%d body=%s", resp.StatusCode, strings.TrimSpace(string(body)))
 		}
 		var list namespaceList
