@@ -11,57 +11,47 @@ GH_API_BASE="https://api.github.com"
 
 normalize_permissions_json() {
   local value="${1:-}"
-  local attempt=0
-  value="${value//$'\r'/}"
+  local extracted
+
+  value="${value//$''/}"
   value="$(printf '%s' "$value" | sed -E 's/^[[:space:]]+|[[:space:]]+$//g')"
 
-  # Peel single-level wrapper quotes if present.
+  # Peel single-level wrapper quotes repeatedly.
   while :; do
-    local first_char="${value:0:1}"
-    local last_char="${value: -1}"
-    if [[ "$first_char" == '"' && "$last_char" == '"' && ${#value} -ge 2 ]]; then
-      value="${value:1:${#value}-2}"
-    elif [[ "$first_char" == "'" && "$last_char" == "'" && ${#value} -ge 2 ]]; then
-      value="${value:1:${#value}-2}"
-    else
+    if [[ -z "$value" ]]; then
       break
     fi
-    value="$(printf '%s' "$value" | sed -E 's/^[[:space:]]+|[[:space:]]+$//g')"
-  done
 
-  # Keep only the first JSON object if extra noise is present.
-  if [[ "$value" == *"{"* && "$value" == *"}"* ]]; then
-    value="$(printf '%s' "$value" | sed -E 's/^.*(\\{.*\\}).*$/\\1/')"
-  fi
+    local first_char="${value:0:1}"
+    local last_char="${value: -1}"
 
-  # Iteratively normalize common malformed suffixes (extra braces/quotes/comma).
-  while (( attempt < 12 )); do
-    if jq -e -c . <<<"$value" >/dev/null 2>&1; then
-      printf '%s' "$value"
-      return 0
-    fi
-
-    if [[ "$value" == *"}" ]]; then
-      value="${value%\}}"
-      ((attempt += 1))
+    if [[ "$first_char" == '"' && "$last_char" == '"' && ${#value} -ge 2 ]]; then
+      value="${value:1:${#value}-2}"
+      value="$(printf '%s' "$value" | sed -E 's/^[[:space:]]+|[[:space:]]+$//g')"
       continue
     fi
-    if [[ "$value" == *"," ]]; then
-      value="${value%,}"
-      ((attempt += 1))
+    if [[ "$first_char" == "'" && "$last_char" == "'" && ${#value} -ge 2 ]]; then
+      value="${value:1:${#value}-2}"
+      value="$(printf '%s' "$value" | sed -E 's/^[[:space:]]+|[[:space:]]+$//g')"
       continue
     fi
-    if [[ "$value" == *'"' ]]; then
-      value="${value%\"}"
-      ((attempt += 1))
-      continue
-    fi
-
     break
   done
 
+  if jq -e -c . <<<"$value" >/dev/null 2>&1; then
+    printf '%s' "$value"
+    return 0
+  fi
+
+  extracted="$(printf '%s' "$value" | awk 'match($0, /\{.*\}/) { print substr($0, RSTART, RLENGTH); exit }')"
+  if [[ -n "$extracted" ]] && jq -e -c . <<<"$extracted" >/dev/null 2>&1; then
+    printf '%s' "$extracted"
+    return 0
+  fi
+
   return 1
 }
+
 
 jwt_b64_url() {
   openssl base64 -e -A | tr '/+' '_-' | tr -d '='
