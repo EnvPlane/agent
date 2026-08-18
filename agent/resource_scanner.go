@@ -23,6 +23,7 @@ type ResourceScanResult struct {
 	ServiceGraph       domain.ServiceGraph
 	ServiceEnvs        domain.ServiceEnvironmentVariables
 	PermissionWarnings []string
+	Completeness       domain.ResourceScanCompletenessReport
 }
 
 func NewResourceDiscoveryScanner(source *KubernetesNamespaceSource, readSecrets ...bool) *ResourceDiscoveryScanner {
@@ -60,17 +61,21 @@ func (s *ResourceDiscoveryScanner) Scan(ctx context.Context, namespaces []string
 		if namespaceSnapshot.Name != "" {
 			items = append(items, namespaceSnapshot)
 		}
-		targets := []struct {
+			targets := []struct {
 			kind     string
 			endpoint string
 		}{
 			{kind: "Deployment", endpoint: "/apis/apps/v1/namespaces/%s/deployments"},
 			{kind: "StatefulSet", endpoint: "/apis/apps/v1/namespaces/%s/statefulsets"},
+			{kind: "DaemonSet", endpoint: "/apis/apps/v1/namespaces/%s/daemonsets"},
 			{kind: "Service", endpoint: "/api/v1/namespaces/%s/services"},
 			{kind: "Ingress", endpoint: "/apis/networking.k8s.io/v1/namespaces/%s/ingresses"},
 			{kind: "ConfigMap", endpoint: "/api/v1/namespaces/%s/configmaps"},
 			{kind: "ResourceQuota", endpoint: "/api/v1/namespaces/%s/resourcequotas"},
 			{kind: "LimitRange", endpoint: "/api/v1/namespaces/%s/limitranges"},
+			{kind: "NetworkPolicy", endpoint: "/apis/networking.k8s.io/v1/namespaces/%s/networkpolicies"},
+			{kind: "HorizontalPodAutoscaler", endpoint: "/apis/autoscaling/v2/namespaces/%s/horizontalpodautoscalers"},
+			{kind: "PodDisruptionBudget", endpoint: "/apis/policy/v1/namespaces/%s/poddisruptionbudgets"},
 			{kind: "PersistentVolumeClaim", endpoint: "/api/v1/namespaces/%s/persistentvolumeclaims"},
 			{kind: "Job", endpoint: "/apis/batch/v1/namespaces/%s/jobs"},
 			{kind: "CronJob", endpoint: "/apis/batch/v1/namespaces/%s/cronjobs"},
@@ -90,7 +95,7 @@ func (s *ResourceDiscoveryScanner) Scan(ctx context.Context, namespaces []string
 			if warning != "" {
 				warnings = append(warnings, warning)
 			}
-			items = append(items, snapshots...)
+		items = append(items, snapshots...)
 		}
 	}
 
@@ -191,7 +196,22 @@ func (s *ResourceDiscoveryScanner) Scan(ctx context.Context, namespaces []string
 		ServiceGraph:       graph,
 		ServiceEnvs:        BuildServiceEnvironmentVariables(items, graph),
 		PermissionWarnings: deduplicateStrings(warnings),
+		Completeness: buildCompletenessReport(normalizedNamespaces, items, warnings),
 	}, nil
+}
+
+func buildCompletenessReport(namespaces []string, snapshots []domain.ResourceSnapshot, warnings []string) domain.ResourceScanCompletenessReport {
+	reports := make([]domain.ResourceScanNamespaceReport, 0, len(namespaces))
+	for _, namespace := range namespaces {
+		report := domain.ResourceScanNamespaceReport{Namespace: namespace}
+		seen := map[string]bool{}
+		for _, snapshot := range snapshots { if snapshot.Namespace == namespace { seen[snapshot.Kind] = true } }
+		for kind := range seen { report.Scanned = append(report.Scanned, kind) }
+		for _, warning := range warnings { if strings.HasPrefix(warning, namespace+" ") || strings.HasPrefix(warning, namespace+":") { lower := strings.ToLower(warning); switch { case strings.Contains(lower, "forbidden"): report.Forbidden = append(report.Forbidden, warning); case strings.Contains(lower, "unsupported"): report.Unsupported = append(report.Unsupported, warning); case strings.Contains(lower, "invalid"): report.Malformed = append(report.Malformed, warning) } } }
+		sort.Strings(report.Scanned); sort.Strings(report.Forbidden); sort.Strings(report.Unsupported); sort.Strings(report.Malformed); reports = append(reports, report)
+	}
+	complete := true; for _, report := range reports { if len(report.Forbidden) > 0 || len(report.Unsupported) > 0 || len(report.Malformed) > 0 { complete = false } }
+	return domain.ResourceScanCompletenessReport{Namespaces: reports, Complete: complete}
 }
 
 func (s *ResourceDiscoveryScanner) getNamespaceResource(ctx context.Context, namespace string) (domain.ResourceSnapshot, string, error) {
@@ -264,7 +284,7 @@ func (s *ResourceDiscoveryScanner) listNamespaceResources(ctx context.Context, n
 		body, _ := io.ReadAll(io.LimitReader(resp.Body, 4096))
 		return nil, fmt.Sprintf("%s %s: forbidden (%s)", namespace, kind, strings.TrimSpace(string(body))), nil
 	case http.StatusNotFound:
-		return nil, "", nil
+		return nil, fmt.Sprintf("%s %s: unsupported API", namespace, kind), nil
 	}
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
 		body, _ := io.ReadAll(io.LimitReader(resp.Body, 4096))
@@ -352,6 +372,10 @@ func (s *ResourceDiscoveryScanner) listNamespaceResources(ctx context.Context, n
 		if name == "" {
 			continue
 		}
+		if kind == "Job" && index < len(rawPayload.Items) && isExcludedRuntimeJob(rawPayload.Items[index]) {
+			itemWarnings = append(itemWarnings, fmt.Sprintf("%s Job/%s: excluded runtime child", namespace, name))
+			continue
+		}
 		selector, selectorErr := labelsFromKubernetesLabelSelector(item.Spec.Selector)
 		if selectorErr != nil {
 			itemWarnings = append(itemWarnings, fmt.Sprintf("%s %s/%s: invalid spec.selector (%v)", namespace, kind, name, selectorErr))
@@ -367,7 +391,7 @@ func (s *ResourceDiscoveryScanner) listNamespaceResources(ctx context.Context, n
 			Labels:          item.Metadata.Labels,
 			Annotations:     sanitizeResourceAnnotations(kind, item.Metadata.Annotations),
 			Manifest:        rawManifest,
-			OwnerReferences: item.Metadata.OwnerReferences,
+			OwnerReferences: sanitizeOwnerReferences(item.Metadata.OwnerReferences),
 			Selector:        selector,
 			PodLabels:       normalizeStringMap(item.Spec.Template.Metadata.Labels),
 			EnvVars:         resourceEnvVarsFromContainers(item.Spec.Template.Spec.Containers),
@@ -525,13 +549,34 @@ func sanitizeResourceManifest(kind string, raw map[string]any, namespace string,
 		if immutable, ok := raw["immutable"].(bool); ok {
 			manifest["immutable"] = immutable
 		}
+		keys := make([]string, 0)
+		for _, field := range []string{"data", "stringData"} { if values, ok := raw[field].(map[string]any); ok { for key := range values { if strings.TrimSpace(key) != "" { keys = append(keys, key) } } } }
+		sort.Strings(keys); if len(keys) > 0 { manifest["keys"] = deduplicateStrings(keys) }
 		return manifest
+	}
+	if kind == "ConfigMap" {
+		if data, ok := deepCopyJSONValue(raw["data"]).(map[string]any); ok { manifest["data"] = data }
+		if binaryData, ok := deepCopyJSONValue(raw["binaryData"]).(map[string]any); ok { manifest["binaryData"] = binaryData }
 	}
 
 	if spec, ok := deepCopyJSONValue(raw["spec"]).(map[string]any); ok && len(spec) > 0 {
 		manifest["spec"] = spec
 	}
 	return manifest
+}
+
+func sanitizeOwnerReferences(references []domain.ResourceOwnerReference) []domain.ResourceOwnerReference {
+	if len(references) == 0 { return nil }
+	result := make([]domain.ResourceOwnerReference, 0, len(references)); for _, reference := range references { if strings.TrimSpace(reference.Kind) == "" || strings.TrimSpace(reference.Name) == "" { continue }; result = append(result, domain.ResourceOwnerReference{Kind: strings.TrimSpace(reference.Kind), Name: strings.TrimSpace(reference.Name)}) }; return result
+}
+
+func isExcludedRuntimeJob(raw map[string]any) bool {
+	meta, _ := raw["metadata"].(map[string]any)
+	if owners, ok := meta["ownerReferences"].([]any); ok { for _, owner := range owners { if item, ok := owner.(map[string]any); ok && strings.EqualFold(stringifyAny(item["kind"]), "CronJob") { return true } } }
+	status, _ := raw["status"].(map[string]any)
+	if _, ok := status["completionTime"]; ok { return true }
+	if succeeded, ok := status["succeeded"].(float64); ok && succeeded > 0 { return true }
+	return false
 }
 
 func sanitizeResourceAnnotations(kind string, annotations map[string]string) map[string]string {
