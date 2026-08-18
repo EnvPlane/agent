@@ -291,17 +291,18 @@ func (r *HTTPStatusReporter) ReportResourceScan(ctx context.Context, cfg Config,
 		return fmt.Errorf("resource scan task scan id is required")
 	}
 	payload := domain.AgentResourceScanRequest{
-		ProjectID:          cfg.BootstrapProjectID,
-		ClusterID:          cfg.ClusterID,
-		AgentID:            cfg.AgentID,
-		ScanID:             task.ScanID,
-		Status:             "completed",
-		ResourceSnapshots:  result.Snapshots,
-		ServiceGraph:       result.ServiceGraph,
-		ServiceEnvs:        result.ServiceEnvs,
-		PermissionWarnings: result.PermissionWarnings,
-		Completeness:       result.Completeness,
-		ObservedAt:         time.Now().UTC(),
+		ProjectID:              cfg.BootstrapProjectID,
+		ClusterID:              cfg.ClusterID,
+		AgentID:                cfg.AgentID,
+		ScanID:                 task.ScanID,
+		Status:                 "completed",
+		ResourceSnapshots:      result.Snapshots,
+		ServiceGraph:           result.ServiceGraph,
+		ServiceEnvs:            result.ServiceEnvs,
+		PermissionWarnings:     result.PermissionWarnings,
+		Completeness:           result.Completeness,
+		SourceHealthDiagnostic: result.SourceHealthDiagnostic,
+		ObservedAt:             time.Now().UTC(),
 	}
 	return r.postJSONWithBearer(ctx, "/api/v1/agents/resource-scan", payload, cfg.AgentAuthToken, "report resource scan")
 }

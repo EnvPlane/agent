@@ -19,11 +19,12 @@ type ResourceDiscoveryScanner struct {
 }
 
 type ResourceScanResult struct {
-	Snapshots          []domain.ResourceSnapshot
-	ServiceGraph       domain.ServiceGraph
-	ServiceEnvs        domain.ServiceEnvironmentVariables
-	PermissionWarnings []string
-	Completeness       domain.ResourceScanCompletenessReport
+	Snapshots              []domain.ResourceSnapshot
+	ServiceGraph           domain.ServiceGraph
+	ServiceEnvs            domain.ServiceEnvironmentVariables
+	PermissionWarnings     []string
+	Completeness           domain.ResourceScanCompletenessReport
+	SourceHealthDiagnostic []domain.ObservedInventoryItem
 }
 
 func NewResourceDiscoveryScanner(source *KubernetesNamespaceSource, readSecrets ...bool) *ResourceDiscoveryScanner {
@@ -61,7 +62,7 @@ func (s *ResourceDiscoveryScanner) Scan(ctx context.Context, namespaces []string
 		if namespaceSnapshot.Name != "" {
 			items = append(items, namespaceSnapshot)
 		}
-			targets := []struct {
+		targets := []struct {
 			kind     string
 			endpoint string
 		}{
@@ -95,7 +96,7 @@ func (s *ResourceDiscoveryScanner) Scan(ctx context.Context, namespaces []string
 			if warning != "" {
 				warnings = append(warnings, warning)
 			}
-		items = append(items, snapshots...)
+			items = append(items, snapshots...)
 		}
 	}
 
@@ -191,12 +192,14 @@ func (s *ResourceDiscoveryScanner) Scan(ctx context.Context, namespaces []string
 	})
 	sort.Strings(warnings)
 	graph := BuildServiceGraph(items)
+	observed := domain.ObservedInventoryFromSnapshots(items, graph)
 	return ResourceScanResult{
-		Snapshots:          items,
-		ServiceGraph:       graph,
-		ServiceEnvs:        BuildServiceEnvironmentVariables(items, graph),
-		PermissionWarnings: deduplicateStrings(warnings),
-		Completeness: buildCompletenessReport(normalizedNamespaces, items, warnings),
+		Snapshots:              items,
+		ServiceGraph:           graph,
+		ServiceEnvs:            BuildServiceEnvironmentVariables(items, graph),
+		PermissionWarnings:     deduplicateStrings(warnings),
+		Completeness:           buildCompletenessReport(normalizedNamespaces, items, warnings),
+		SourceHealthDiagnostic: observed.Items,
 	}, nil
 }
 
@@ -205,12 +208,39 @@ func buildCompletenessReport(namespaces []string, snapshots []domain.ResourceSna
 	for _, namespace := range namespaces {
 		report := domain.ResourceScanNamespaceReport{Namespace: namespace}
 		seen := map[string]bool{}
-		for _, snapshot := range snapshots { if snapshot.Namespace == namespace { seen[snapshot.Kind] = true } }
-		for kind := range seen { report.Scanned = append(report.Scanned, kind) }
-		for _, warning := range warnings { if strings.HasPrefix(warning, namespace+" ") || strings.HasPrefix(warning, namespace+":") { lower := strings.ToLower(warning); switch { case strings.Contains(lower, "forbidden"): report.Forbidden = append(report.Forbidden, warning); case strings.Contains(lower, "unsupported"): report.Unsupported = append(report.Unsupported, warning); case strings.Contains(lower, "invalid"): report.Malformed = append(report.Malformed, warning) } } }
-		sort.Strings(report.Scanned); sort.Strings(report.Forbidden); sort.Strings(report.Unsupported); sort.Strings(report.Malformed); reports = append(reports, report)
+		for _, snapshot := range snapshots {
+			if snapshot.Namespace == namespace {
+				seen[snapshot.Kind] = true
+			}
+		}
+		for kind := range seen {
+			report.Scanned = append(report.Scanned, kind)
+		}
+		for _, warning := range warnings {
+			if strings.HasPrefix(warning, namespace+" ") || strings.HasPrefix(warning, namespace+":") {
+				lower := strings.ToLower(warning)
+				switch {
+				case strings.Contains(lower, "forbidden"):
+					report.Forbidden = append(report.Forbidden, warning)
+				case strings.Contains(lower, "unsupported"):
+					report.Unsupported = append(report.Unsupported, warning)
+				case strings.Contains(lower, "invalid"):
+					report.Malformed = append(report.Malformed, warning)
+				}
+			}
+		}
+		sort.Strings(report.Scanned)
+		sort.Strings(report.Forbidden)
+		sort.Strings(report.Unsupported)
+		sort.Strings(report.Malformed)
+		reports = append(reports, report)
 	}
-	complete := true; for _, report := range reports { if len(report.Forbidden) > 0 || len(report.Unsupported) > 0 || len(report.Malformed) > 0 { complete = false } }
+	complete := true
+	for _, report := range reports {
+		if len(report.Forbidden) > 0 || len(report.Unsupported) > 0 || len(report.Malformed) > 0 {
+			complete = false
+		}
+	}
 	return domain.ResourceScanCompletenessReport{Namespaces: reports, Complete: complete}
 }
 
@@ -550,13 +580,28 @@ func sanitizeResourceManifest(kind string, raw map[string]any, namespace string,
 			manifest["immutable"] = immutable
 		}
 		keys := make([]string, 0)
-		for _, field := range []string{"data", "stringData"} { if values, ok := raw[field].(map[string]any); ok { for key := range values { if strings.TrimSpace(key) != "" { keys = append(keys, key) } } } }
-		sort.Strings(keys); if len(keys) > 0 { manifest["keys"] = deduplicateStrings(keys) }
+		for _, field := range []string{"data", "stringData"} {
+			if values, ok := raw[field].(map[string]any); ok {
+				for key := range values {
+					if strings.TrimSpace(key) != "" {
+						keys = append(keys, key)
+					}
+				}
+			}
+		}
+		sort.Strings(keys)
+		if len(keys) > 0 {
+			manifest["keys"] = deduplicateStrings(keys)
+		}
 		return manifest
 	}
 	if kind == "ConfigMap" {
-		if data, ok := deepCopyJSONValue(raw["data"]).(map[string]any); ok { manifest["data"] = data }
-		if binaryData, ok := deepCopyJSONValue(raw["binaryData"]).(map[string]any); ok { manifest["binaryData"] = binaryData }
+		if data, ok := deepCopyJSONValue(raw["data"]).(map[string]any); ok {
+			manifest["data"] = data
+		}
+		if binaryData, ok := deepCopyJSONValue(raw["binaryData"]).(map[string]any); ok {
+			manifest["binaryData"] = binaryData
+		}
 	}
 
 	if spec, ok := deepCopyJSONValue(raw["spec"]).(map[string]any); ok && len(spec) > 0 {
@@ -566,16 +611,35 @@ func sanitizeResourceManifest(kind string, raw map[string]any, namespace string,
 }
 
 func sanitizeOwnerReferences(references []domain.ResourceOwnerReference) []domain.ResourceOwnerReference {
-	if len(references) == 0 { return nil }
-	result := make([]domain.ResourceOwnerReference, 0, len(references)); for _, reference := range references { if strings.TrimSpace(reference.Kind) == "" || strings.TrimSpace(reference.Name) == "" { continue }; result = append(result, domain.ResourceOwnerReference{Kind: strings.TrimSpace(reference.Kind), Name: strings.TrimSpace(reference.Name)}) }; return result
+	if len(references) == 0 {
+		return nil
+	}
+	result := make([]domain.ResourceOwnerReference, 0, len(references))
+	for _, reference := range references {
+		if strings.TrimSpace(reference.Kind) == "" || strings.TrimSpace(reference.Name) == "" {
+			continue
+		}
+		result = append(result, domain.ResourceOwnerReference{Kind: strings.TrimSpace(reference.Kind), Name: strings.TrimSpace(reference.Name)})
+	}
+	return result
 }
 
 func isExcludedRuntimeJob(raw map[string]any) bool {
 	meta, _ := raw["metadata"].(map[string]any)
-	if owners, ok := meta["ownerReferences"].([]any); ok { for _, owner := range owners { if item, ok := owner.(map[string]any); ok && strings.EqualFold(stringifyAny(item["kind"]), "CronJob") { return true } } }
+	if owners, ok := meta["ownerReferences"].([]any); ok {
+		for _, owner := range owners {
+			if item, ok := owner.(map[string]any); ok && strings.EqualFold(stringifyAny(item["kind"]), "CronJob") {
+				return true
+			}
+		}
+	}
 	status, _ := raw["status"].(map[string]any)
-	if _, ok := status["completionTime"]; ok { return true }
-	if succeeded, ok := status["succeeded"].(float64); ok && succeeded > 0 { return true }
+	if _, ok := status["completionTime"]; ok {
+		return true
+	}
+	if succeeded, ok := status["succeeded"].(float64); ok && succeeded > 0 {
+		return true
+	}
 	return false
 }
 
