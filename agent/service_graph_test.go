@@ -1,6 +1,7 @@
 package agent
 
 import (
+	"encoding/json"
 	"testing"
 
 	"github.com/envpilot/contracts/domain"
@@ -43,6 +44,24 @@ func TestBuildServiceGraphMapsServicesIngressAndEnvDependencies(t *testing.T) {
 	assertEdge(t, graph, "Ingress/dev-base/orders-public", "Service/dev-base/orders", "routes-to", 1)
 	assertEdge(t, graph, "Deployment/dev-base/orders", "Service/dev-base/payments", "depends-on", 0.95)
 }
+
+func TestBuildServiceGraphCMSLikeMultiNamespaceGolden(t *testing.T) {
+	snapshots := []domain.ResourceSnapshot{
+		{Kind: "Service", Namespace: "dev-cms", Name: "web", Selector: map[string]string{"app": "web"}},
+		{Kind: "Deployment", Namespace: "dev-cms", Name: "web", PodLabels: map[string]string{"app": "web"}, Manifest: map[string]any{"spec": map[string]any{"template": map[string]any{"spec": map[string]any{"serviceAccountName": "web", "volumes": []any{map[string]any{"configMap": map[string]any{"name": "web-config"}}}}}}}},
+		{Kind: "ServiceAccount", Namespace: "dev-cms", Name: "web"}, {Kind: "ConfigMap", Namespace: "dev-cms", Name: "web-config"},
+		{Kind: "Service", Namespace: "dev-cms-content", Name: "web", Selector: map[string]string{"app": "web"}},
+		{Kind: "Deployment", Namespace: "dev-cms-content", Name: "web", PodLabels: map[string]string{"app": "web"}},
+	}
+	graph := BuildServiceGraph(snapshots)
+	if graph.Validation == nil || !graph.Validation.Valid { t.Fatalf("CMS graph should be valid: %#v", graph.Validation) }
+	assertEdge(t, graph, "Deployment/dev-cms/web", "ConfigMap/dev-cms/web-config", "references", 1)
+	assertEdge(t, graph, "Deployment/dev-cms/web", "ServiceAccount/dev-cms/web", "references", 1)
+	if _, ok := findGraphNode(graph, "Service/dev-cms-content/web"); !ok { t.Fatal("same-name resource from second namespace was lost") }
+	encoded, err := json.Marshal(graph); if err != nil { t.Fatal(err) }; if len(encoded) == 0 { t.Fatal("empty graph golden") }
+}
+
+func findGraphNode(graph domain.ServiceGraph, id string) (domain.ServiceGraphNode, bool) { for _, node := range graph.Nodes { if node.ID == id { return node, true } }; return domain.ServiceGraphNode{}, false }
 
 func TestBuildServiceGraphMarksAmbiguousEnvDependenciesWithConfidence(t *testing.T) {
 	graph := BuildServiceGraph([]domain.ResourceSnapshot{
