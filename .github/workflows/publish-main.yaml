@@ -86,7 +86,7 @@ jobs:
       - id: metadata
         uses: docker/metadata-action@v6
         with:
-          images: ghcr.io/envpilot/agent
+          images: ghcr.io/EnvPlane/agent
           labels: |
             org.opencontainers.image.source=https://github.com/${{ github.repository }}
             org.opencontainers.image.revision=${{ github.sha }}
@@ -110,7 +110,7 @@ jobs:
       - name: Scan published image for high and critical vulnerabilities
         uses: aquasecurity/trivy-action@v0.36.0
         with:
-          image-ref: ghcr.io/envpilot/agent:sha-${{ github.sha }}
+          image-ref: ghcr.io/EnvPlane/agent:sha-${{ github.sha }}
           format: table
           vuln-type: os,library
           severity: HIGH,CRITICAL
@@ -120,7 +120,7 @@ jobs:
         name: Emit immutable image metadata
         env:
           COMPONENT: agent
-          REPOSITORY: ghcr.io/envpilot/agent
+          REPOSITORY: ghcr.io/EnvPlane/agent
           TAG: sha-${{ github.sha }}
           DIGEST: ${{ steps.build.outputs.digest }}
         run: |
