@@ -123,6 +123,24 @@ func TestKubernetesNamespaceSourceUsesNamespacedReadsForExplicitAllowlist(t *tes
 	}
 }
 
+func TestKubernetesNamespaceSourceInventoryOnlyDoesNotWatchNamespaces(t *testing.T) {
+	requests := 0
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		requests++
+		http.Error(w, "watch must not be requested", http.StatusForbidden)
+	}))
+	defer server.Close()
+
+	source := NewKubernetesNamespaceSource(server.URL, "kube-token", "", nil, server.Client())
+	source.namespaceInventoryOnly = true
+	if err := source.WatchNamespaces(context.Background(), func(NamespaceEvent) error { return nil }); err != nil {
+		t.Fatalf("inventory-only namespace watch should use polling: %v", err)
+	}
+	if requests != 0 {
+		t.Fatalf("inventory-only namespace watch made %d HTTP requests", requests)
+	}
+}
+
 func TestKubernetesNamespaceSourceListsDeploymentsPodsAndIngresses(t *testing.T) {
 	var paths []string
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {

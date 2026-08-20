@@ -39,13 +39,14 @@ type FluxSource interface {
 }
 
 type KubernetesNamespaceSource struct {
-	apiURL   string
-	token    string
-	selector string
-	allowed  map[string]struct{}
-	excluded map[string]struct{}
-	fluxNS   string
-	client   *http.Client
+	apiURL                 string
+	token                  string
+	selector               string
+	allowed                map[string]struct{}
+	namespaceInventoryOnly bool
+	excluded               map[string]struct{}
+	fluxNS                 string
+	client                 *http.Client
 }
 
 // kubernetesRateLimiter is a context-aware token bucket at the HTTP transport
@@ -350,6 +351,7 @@ func NewKubernetesNamespaceSourceFromConfig(cfg Config) (*KubernetesNamespaceSou
 		return nil, err
 	}
 	source := NewKubernetesNamespaceSourceWithRateLimit(cfg.KubernetesAPIURL, token, cfg.NamespaceSelector, cfg.Namespaces, client, cfg.KubernetesQPS, cfg.KubernetesBurst, cfg.ExcludedNamespaces...)
+	source.namespaceInventoryOnly = cfg.NamespaceInventoryOnly
 	source.fluxNS = cfg.FluxNamespace
 	return source, nil
 }
@@ -503,6 +505,12 @@ func (s *KubernetesNamespaceSource) listExplicitNamespaces(ctx context.Context) 
 }
 
 func (s *KubernetesNamespaceSource) WatchNamespaces(ctx context.Context, handle func(NamespaceEvent) error) error {
+	if s.namespaceInventoryOnly {
+		// Inventory-only Agents have list permission for Namespace objects so
+		// Bootstrap can offer an explicit selection, but deliberately lack the
+		// cluster-wide watch permission. SyncOnce performs the periodic refresh.
+		return nil
+	}
 	if len(s.allowed) > 0 && strings.TrimSpace(s.selector) == "" {
 		// Namespace watches require cluster-scope list/watch permissions. The
 		// explicit allowlist is intentionally polled by NamespaceWatcher instead.
