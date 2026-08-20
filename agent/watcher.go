@@ -12,10 +12,10 @@ import (
 	"sync"
 	"time"
 
-	"github.com/envpilot/contracts/domain"
+	"github.com/envplane/contracts/domain"
 )
 
-const environmentIDLabel = "envpilot.io/environment-id"
+const environmentIDLabel = "envplane.io/environment-id"
 
 const (
 	watchReportAttempts       = 5
@@ -387,8 +387,8 @@ func namespaceStatusMessage(eventType string, namespace Namespace, status domain
 
 func environmentIDFromNamespace(name string) string {
 	name = strings.TrimSpace(name)
-	if !strings.HasPrefix(name, "envpilot-pr-") {
+	if !strings.HasPrefix(name, "envplane-pr-") {
 		return ""
 	}
-	return strings.TrimPrefix(name, "envpilot-pr-")
+	return strings.TrimPrefix(name, "envplane-pr-")
 }

@@ -5,7 +5,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/envpilot/contracts/domain"
+	"github.com/envplane/contracts/domain"
 )
 
 func TestDeploymentStatusCollectorReportsReadyWhenDeploymentsAndPodsReady(t *testing.T) {
@@ -138,11 +138,11 @@ func TestDeploymentStatusCollectorUsesKubernetesSource(t *testing.T) {
 	}
 	collector := NewDeploymentStatusCollector(source)
 
-	report, err := collector.Collect(context.Background(), "envpilot-pr-kan-403")
+	report, err := collector.Collect(context.Background(), "envplane-pr-kan-403")
 	if err != nil {
 		t.Fatalf("collect: %v", err)
 	}
-	if source.namespace != "envpilot-pr-kan-403" {
+	if source.namespace != "envplane-pr-kan-403" {
 		t.Fatalf("namespace = %q", source.namespace)
 	}
 	if report.Status != domain.StatusCreating {

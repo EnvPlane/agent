@@ -13,7 +13,7 @@ import (
 	"syscall"
 	"time"
 
-	clusteragent "github.com/envpilot/agent/agent"
+	clusteragent "github.com/envplane/agent/agent"
 )
 
 func main() {
@@ -124,11 +124,11 @@ func runAgentConnectivityCheck(logger *slog.Logger) {
 		os.Exit(1)
 	}
 	policy := clusteragent.ControlPlaneConnectivityRetryPolicy{
-		MaxAttempts:    getenvInt("ENVPILOT_CONTROL_PLANE_CONNECTIVITY_MAX_ATTEMPTS", 12),
-		InitialBackoff: time.Duration(getenvInt("ENVPILOT_CONTROL_PLANE_CONNECTIVITY_INITIAL_BACKOFF_SECONDS", 1)) * time.Second,
-		MaxBackoff:     time.Duration(getenvInt("ENVPILOT_CONTROL_PLANE_CONNECTIVITY_MAX_BACKOFF_SECONDS", 5)) * time.Second,
+		MaxAttempts:    getenvInt("ENVPLANE_CONTROL_PLANE_CONNECTIVITY_MAX_ATTEMPTS", 12),
+		InitialBackoff: time.Duration(getenvInt("ENVPLANE_CONTROL_PLANE_CONNECTIVITY_INITIAL_BACKOFF_SECONDS", 1)) * time.Second,
+		MaxBackoff:     time.Duration(getenvInt("ENVPLANE_CONTROL_PLANE_CONNECTIVITY_MAX_BACKOFF_SECONDS", 5)) * time.Second,
 	}
-	deadlineSeconds := getenvInt("ENVPILOT_CONTROL_PLANE_CONNECTIVITY_DEADLINE_SECONDS", 120)
+	deadlineSeconds := getenvInt("ENVPLANE_CONTROL_PLANE_CONNECTIVITY_DEADLINE_SECONDS", 120)
 	if deadlineSeconds < 5 {
 		deadlineSeconds = 5
 	}
@@ -165,8 +165,8 @@ func getenvInt(name string, fallback int) int {
 }
 
 func getenvCompat(legacy string) string {
-	if strings.HasPrefix(legacy, "ENVPILOT_") {
-		if value := strings.TrimSpace(os.Getenv("ENVPLANE_" + strings.TrimPrefix(legacy, "ENVPILOT_"))); value != "" {
+	if strings.HasPrefix(legacy, "ENVPLANE_") {
+		if value := strings.TrimSpace(os.Getenv("ENVPLANE_" + strings.TrimPrefix(legacy, "ENVPLANE_"))); value != "" {
 			return value
 		}
 	}

@@ -12,7 +12,7 @@ RUN --mount=type=cache,target=/go/pkg/mod \
     --mount=type=secret,id=github_token,required=true \
     TOKEN="$(cat /run/secrets/github_token)" && \
     git config --global url."https://x-access-token:${TOKEN}@github.com/".insteadOf "https://github.com/" && \
-    GOPRIVATE=github.com/envpilot/* go mod download && \
+    GOPRIVATE=github.com/envplane/* go mod download && \
     rm -f /root/.gitconfig
 COPY . .
 RUN --mount=type=cache,target=/go/pkg/mod \
@@ -20,18 +20,18 @@ RUN --mount=type=cache,target=/go/pkg/mod \
     --mount=type=secret,id=github_token,required=true \
     TOKEN="$(cat /run/secrets/github_token)" && \
     git config --global url."https://x-access-token:${TOKEN}@github.com/".insteadOf "https://github.com/" && \
-    GOPRIVATE=github.com/envpilot/* \
+    GOPRIVATE=github.com/envplane/* \
     CGO_ENABLED=0 GOOS=${TARGETOS} GOARCH=${TARGETARCH} \
-    go build -trimpath -ldflags="-s -w" -o /out/envpilot-agent ./apps/agent && \
+    go build -trimpath -ldflags="-s -w" -o /out/envplane-agent ./apps/agent && \
     rm -f /root/.gitconfig
 
 FROM alpine:3.24@sha256:28bd5fe8b56d1bd048e5babf5b10710ebe0bae67db86916198a6eec434943f8b
 
 RUN apk add --no-cache ca-certificates && \
-    addgroup -S -g 10001 envpilot && \
-    adduser -S -D -H -u 10001 -G envpilot -h /var/lib/envpilot-agent envpilot && \
-    mkdir -p /var/lib/envpilot-agent && \
-    chown -R envpilot:envpilot /var/lib/envpilot-agent
-COPY --from=builder /out/envpilot-agent /usr/local/bin/envpilot-agent
+    addgroup -S -g 10001 envplane && \
+    adduser -S -D -H -u 10001 -G envplane -h /var/lib/envplane-agent envplane && \
+    mkdir -p /var/lib/envplane-agent && \
+    chown -R envplane:envplane /var/lib/envplane-agent
+COPY --from=builder /out/envplane-agent /usr/local/bin/envplane-agent
 USER 10001:10001
-ENTRYPOINT ["/usr/local/bin/envpilot-agent"]
+ENTRYPOINT ["/usr/local/bin/envplane-agent"]

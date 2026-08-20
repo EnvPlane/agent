@@ -8,7 +8,7 @@ import (
 func TestEventCollectorNormalizesAndSortsKubernetesEvents(t *testing.T) {
 	events := BuildEnvironmentEvents([]KubernetesEvent{
 		{
-			Metadata:       EventMetadata{Name: "old", Namespace: "envpilot-pr-kan-404"},
+			Metadata:       EventMetadata{Name: "old", Namespace: "envplane-pr-kan-404"},
 			Type:           "Normal",
 			Reason:         "Pulled",
 			Message:        "Successfully pulled image",
@@ -17,7 +17,7 @@ func TestEventCollectorNormalizesAndSortsKubernetesEvents(t *testing.T) {
 			LastTimestamp:  "2026-05-01T09:00:00Z",
 		},
 		{
-			Metadata:       EventMetadata{UID: "new", Namespace: "envpilot-pr-kan-404"},
+			Metadata:       EventMetadata{UID: "new", Namespace: "envplane-pr-kan-404"},
 			Type:           "Warning",
 			Reason:         "FailedScheduling",
 			Message:        "0/3 nodes are available",
@@ -45,7 +45,7 @@ func TestEventCollectorUsesKubernetesSource(t *testing.T) {
 	source := &fakeEventSource{
 		events: []KubernetesEvent{
 			{
-				Metadata:      EventMetadata{Name: "event-1", Namespace: "envpilot-pr-kan-404"},
+				Metadata:      EventMetadata{Name: "event-1", Namespace: "envplane-pr-kan-404"},
 				Type:          "Warning",
 				Reason:        "BackOff",
 				Message:       "Back-off restarting failed container",
@@ -55,11 +55,11 @@ func TestEventCollectorUsesKubernetesSource(t *testing.T) {
 	}
 	collector := NewEventCollector(source)
 
-	events, err := collector.Collect(context.Background(), "envpilot-pr-kan-404")
+	events, err := collector.Collect(context.Background(), "envplane-pr-kan-404")
 	if err != nil {
 		t.Fatalf("collect: %v", err)
 	}
-	if source.namespace != "envpilot-pr-kan-404" {
+	if source.namespace != "envplane-pr-kan-404" {
 		t.Fatalf("namespace = %q", source.namespace)
 	}
 	if len(events) != 1 || events[0].Reason != "BackOff" {

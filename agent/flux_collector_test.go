@@ -5,15 +5,15 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/envpilot/contracts/domain"
+	"github.com/envplane/contracts/domain"
 )
 
 func TestFluxStatusCollectorReportsReadyReconciliation(t *testing.T) {
 	status := BuildFluxStatus("kan-405", Namespace{
 		Metadata: NamespaceMetadata{
-			Name: "envpilot-pr-kan-405",
+			Name: "envplane-pr-kan-405",
 			Labels: map[string]string{
-				"envpilot.io/product": "bethunder",
+				"envplane.io/product": "bethunder",
 			},
 		},
 	}, []FluxKustomization{
@@ -29,7 +29,7 @@ func TestFluxStatusCollectorReportsReadyReconciliation(t *testing.T) {
 		},
 	}, []HelmRelease{
 		{
-			Metadata: FluxMetadata{Name: "nginx", Namespace: "envpilot-pr-kan-405"},
+			Metadata: FluxMetadata{Name: "nginx", Namespace: "envplane-pr-kan-405"},
 			Status: FluxStatus{
 				ObservedGeneration: 1,
 				Conditions: []FluxCondition{
@@ -52,7 +52,7 @@ func TestFluxStatusCollectorReportsReadyReconciliation(t *testing.T) {
 
 func TestFluxStatusCollectorReportsFailedReconciliation(t *testing.T) {
 	status := BuildFluxStatus("kan-405", Namespace{
-		Metadata: NamespaceMetadata{Name: "envpilot-pr-kan-405"},
+		Metadata: NamespaceMetadata{Name: "envplane-pr-kan-405"},
 	}, []FluxKustomization{
 		{
 			Metadata: FluxMetadata{Name: "kan-405.bethunder", Namespace: "flux-system"},
@@ -82,7 +82,7 @@ func TestFluxStatusCollectorUsesFluxSource(t *testing.T) {
 		},
 		helmReleases: []HelmRelease{
 			{
-				Metadata: FluxMetadata{Name: "nginx", Namespace: "envpilot-pr-kan-406"},
+				Metadata: FluxMetadata{Name: "nginx", Namespace: "envplane-pr-kan-406"},
 				Status:   FluxStatus{Conditions: []FluxCondition{{Type: "Ready", Status: "True"}}},
 			},
 		},
@@ -91,8 +91,8 @@ func TestFluxStatusCollectorUsesFluxSource(t *testing.T) {
 
 	status, err := collector.Collect(context.Background(), "kan-406", Namespace{
 		Metadata: NamespaceMetadata{
-			Name:   "envpilot-pr-kan-406",
-			Labels: map[string]string{"envpilot.io/product": "bethunder"},
+			Name:   "envplane-pr-kan-406",
+			Labels: map[string]string{"envplane.io/product": "bethunder"},
 		},
 	})
 	if err != nil {
@@ -104,7 +104,7 @@ func TestFluxStatusCollectorUsesFluxSource(t *testing.T) {
 	if source.kustomizationNamespace != "flux-system" {
 		t.Fatalf("kustomization namespace = %q", source.kustomizationNamespace)
 	}
-	if source.helmReleaseNamespace != "envpilot-pr-kan-406" {
+	if source.helmReleaseNamespace != "envplane-pr-kan-406" {
 		t.Fatalf("helm release namespace = %q", source.helmReleaseNamespace)
 	}
 }

@@ -14,13 +14,13 @@ func TestConfigFromEnvLoadsPersistedAgentAuthTokenFile(t *testing.T) {
 	if err := os.WriteFile(tokenPath, []byte("persisted-agent-auth-token\n"), 0o600); err != nil {
 		t.Fatalf("write token file: %v", err)
 	}
-	t.Setenv("ENVPILOT_CONTROL_PLANE_URL", "https://envpilot.example")
-	t.Setenv("ENVPILOT_CLUSTER_ID", "dev-us")
-	t.Setenv("ENVPILOT_AGENT_ID", "agent-1")
-	t.Setenv("ENVPILOT_AGENT_AUTH_TOKEN_FILE", tokenPath)
-	t.Setenv("ENVPILOT_AGENT_REGISTRATION_TOKEN", "")
-	t.Setenv("ENVPILOT_AGENT_AUTH_TOKEN", "")
-	t.Setenv("ENVPILOT_KUBERNETES_API_URL", "https://kubernetes.example")
+	t.Setenv("ENVPLANE_CONTROL_PLANE_URL", "https://envplane.example")
+	t.Setenv("ENVPLANE_CLUSTER_ID", "dev-us")
+	t.Setenv("ENVPLANE_AGENT_ID", "agent-1")
+	t.Setenv("ENVPLANE_AGENT_AUTH_TOKEN_FILE", tokenPath)
+	t.Setenv("ENVPLANE_AGENT_REGISTRATION_TOKEN", "")
+	t.Setenv("ENVPLANE_AGENT_AUTH_TOKEN", "")
+	t.Setenv("ENVPLANE_KUBERNETES_API_URL", "https://kubernetes.example")
 
 	cfg := ConfigFromEnv()
 	if cfg.AgentAuthToken != "persisted-agent-auth-token" {
@@ -38,13 +38,13 @@ func TestConfigFromEnvLoadsPersistedAgentAuthTokenFile(t *testing.T) {
 }
 
 func TestConfigFromEnvLoadsKubernetesRateLimit(t *testing.T) {
-	t.Setenv("ENVPILOT_CONTROL_PLANE_URL", "https://envpilot.example")
-	t.Setenv("ENVPILOT_CLUSTER_ID", "dev-us")
-	t.Setenv("ENVPILOT_AGENT_ID", "agent-1")
-	t.Setenv("ENVPILOT_AGENT_REGISTRATION_TOKEN", "registration-token")
-	t.Setenv("ENVPILOT_KUBERNETES_API_URL", "https://kubernetes.example")
-	t.Setenv("ENVPILOT_KUBERNETES_QPS", "7.5")
-	t.Setenv("ENVPILOT_KUBERNETES_BURST", "12")
+	t.Setenv("ENVPLANE_CONTROL_PLANE_URL", "https://envplane.example")
+	t.Setenv("ENVPLANE_CLUSTER_ID", "dev-us")
+	t.Setenv("ENVPLANE_AGENT_ID", "agent-1")
+	t.Setenv("ENVPLANE_AGENT_REGISTRATION_TOKEN", "registration-token")
+	t.Setenv("ENVPLANE_KUBERNETES_API_URL", "https://kubernetes.example")
+	t.Setenv("ENVPLANE_KUBERNETES_QPS", "7.5")
+	t.Setenv("ENVPLANE_KUBERNETES_BURST", "12")
 	cfg := ConfigFromEnv()
 	if cfg.KubernetesQPS != 7.5 || cfg.KubernetesBurst != 12 {
 		t.Fatalf("kubernetes rate limit = %v/%d", cfg.KubernetesQPS, cfg.KubernetesBurst)
@@ -55,7 +55,7 @@ func TestConfigFromEnvLoadsKubernetesRateLimit(t *testing.T) {
 }
 
 func TestConfigFromEnvCanonicalAliases(t *testing.T) {
-	for _, name := range []string{"ENVPILOT_CONTROL_PLANE_URL", "ENVPLANE_CONTROL_PLANE_URL", "ENVPILOT_CLUSTER_ID", "ENVPLANE_CLUSTER_ID", "ENVPILOT_AGENT_ID", "ENVPLANE_AGENT_ID"} {
+	for _, name := range []string{"ENVPLANE_CONTROL_PLANE_URL", "ENVPLANE_CONTROL_PLANE_URL", "ENVPLANE_CLUSTER_ID", "ENVPLANE_CLUSTER_ID", "ENVPLANE_AGENT_ID", "ENVPLANE_AGENT_ID"} {
 		t.Setenv(name, "")
 		_ = os.Unsetenv(name)
 	}
@@ -69,13 +69,13 @@ func TestConfigFromEnvCanonicalAliases(t *testing.T) {
 }
 
 func TestConfigFromEnvLegacyFallbackAndCanonicalWins(t *testing.T) {
-	for _, name := range []string{"ENVPILOT_CONTROL_PLANE_URL", "ENVPLANE_CONTROL_PLANE_URL", "ENVPILOT_CLUSTER_ID", "ENVPLANE_CLUSTER_ID", "ENVPILOT_AGENT_ID", "ENVPLANE_AGENT_ID"} {
+	for _, name := range []string{"ENVPLANE_CONTROL_PLANE_URL", "ENVPLANE_CONTROL_PLANE_URL", "ENVPLANE_CLUSTER_ID", "ENVPLANE_CLUSTER_ID", "ENVPLANE_AGENT_ID", "ENVPLANE_AGENT_ID"} {
 		t.Setenv(name, "")
 		_ = os.Unsetenv(name)
 	}
-	t.Setenv("ENVPILOT_CONTROL_PLANE_URL", "https://legacy.example")
-	t.Setenv("ENVPILOT_CLUSTER_ID", "legacy-cluster")
-	t.Setenv("ENVPILOT_AGENT_ID", "legacy-agent")
+	t.Setenv("ENVPLANE_CONTROL_PLANE_URL", "https://legacy.example")
+	t.Setenv("ENVPLANE_CLUSTER_ID", "legacy-cluster")
+	t.Setenv("ENVPLANE_AGENT_ID", "legacy-agent")
 	legacy := ConfigFromEnv()
 	if legacy.ControlPlaneURL != "https://legacy.example" || len(legacy.EnvDiagnostics) == 0 {
 		t.Fatalf("legacy fallback/diagnostic missing: %#v", legacy)
@@ -87,7 +87,7 @@ func TestConfigFromEnvLegacyFallbackAndCanonicalWins(t *testing.T) {
 }
 
 func TestConfigFromEnvUsesChartCompatiblePersistedAgentAuthTokenPath(t *testing.T) {
-	authDir := filepath.Join(t.TempDir(), "var", "lib", "envpilot-agent", "auth")
+	authDir := filepath.Join(t.TempDir(), "var", "lib", "envplane-agent", "auth")
 	tokenPath := filepath.Join(authDir, "agent-auth-token")
 	if err := os.MkdirAll(authDir, 0o700); err != nil {
 		t.Fatalf("create chart auth dir: %v", err)
@@ -95,13 +95,13 @@ func TestConfigFromEnvUsesChartCompatiblePersistedAgentAuthTokenPath(t *testing.
 	if err := os.WriteFile(tokenPath, []byte("chart-persisted-agent-auth-token\n"), 0o600); err != nil {
 		t.Fatalf("write token file: %v", err)
 	}
-	t.Setenv("ENVPILOT_CONTROL_PLANE_URL", "https://envpilot.example")
-	t.Setenv("ENVPILOT_CLUSTER_ID", "dev-us")
-	t.Setenv("ENVPILOT_AGENT_ID", "agent-1")
-	t.Setenv("ENVPILOT_AGENT_AUTH_TOKEN_FILE", tokenPath)
-	t.Setenv("ENVPILOT_AGENT_REGISTRATION_TOKEN", "")
-	t.Setenv("ENVPILOT_AGENT_AUTH_TOKEN", "")
-	t.Setenv("ENVPILOT_KUBERNETES_API_URL", "https://kubernetes.example")
+	t.Setenv("ENVPLANE_CONTROL_PLANE_URL", "https://envplane.example")
+	t.Setenv("ENVPLANE_CLUSTER_ID", "dev-us")
+	t.Setenv("ENVPLANE_AGENT_ID", "agent-1")
+	t.Setenv("ENVPLANE_AGENT_AUTH_TOKEN_FILE", tokenPath)
+	t.Setenv("ENVPLANE_AGENT_REGISTRATION_TOKEN", "")
+	t.Setenv("ENVPLANE_AGENT_AUTH_TOKEN", "")
+	t.Setenv("ENVPLANE_KUBERNETES_API_URL", "https://kubernetes.example")
 
 	cfg := ConfigFromEnv()
 	if cfg.AgentAuthToken != "chart-persisted-agent-auth-token" {
@@ -116,24 +116,24 @@ func TestConfigFromEnvUsesChartCompatiblePersistedAgentAuthTokenPath(t *testing.
 }
 
 func TestConfigFromEnvTreatsEmptyNamespaceSelectorAsAllNamespaces(t *testing.T) {
-	t.Setenv("ENVPILOT_WATCH_NAMESPACE_SELECTOR", "")
-	t.Setenv("ENVPILOT_WATCH_EXCLUDED_NAMESPACES", "kube-system,envpilot-system")
-	t.Setenv("ENVPILOT_AGENT_NAMESPACE", "envpilot-agent")
+	t.Setenv("ENVPLANE_WATCH_NAMESPACE_SELECTOR", "")
+	t.Setenv("ENVPLANE_WATCH_EXCLUDED_NAMESPACES", "kube-system,envplane-system")
+	t.Setenv("ENVPLANE_AGENT_NAMESPACE", "envplane-agent")
 	cfg := ConfigFromEnv()
 	if cfg.NamespaceSelector != "" {
 		t.Fatalf("empty selector must mean all namespaces, got %q", cfg.NamespaceSelector)
 	}
-	if got, want := cfg.ExcludedNamespaces, []string{"kube-system", "envpilot-system", "envpilot-agent"}; !reflect.DeepEqual(got, want) {
+	if got, want := cfg.ExcludedNamespaces, []string{"kube-system", "envplane-system", "envplane-agent"}; !reflect.DeepEqual(got, want) {
 		t.Fatalf("excluded namespaces = %#v want %#v", got, want)
 	}
 }
 
 func TestConfigFromEnvDisablesSecretDiscoveryUnlessExplicitlyEnabled(t *testing.T) {
-	t.Setenv("ENVPILOT_DISCOVERY_READ_SECRETS", "")
+	t.Setenv("ENVPLANE_DISCOVERY_READ_SECRETS", "")
 	if ConfigFromEnv().ReadSecrets {
 		t.Fatal("secret discovery must be disabled by default")
 	}
-	t.Setenv("ENVPILOT_DISCOVERY_READ_SECRETS", "true")
+	t.Setenv("ENVPLANE_DISCOVERY_READ_SECRETS", "true")
 	if !ConfigFromEnv().ReadSecrets {
 		t.Fatal("secret discovery must be enabled only by explicit configuration")
 	}
@@ -179,7 +179,7 @@ func TestConfigRequiresStableHTTPSForRemoteControlPlaneEndpoint(t *testing.T) {
 
 func TestConfigAllowsServiceDNSOnlyForSameCluster(t *testing.T) {
 	cfg := Config{
-		ControlPlaneURL:           "http://envpilot-control-plane.envpilot.svc:8080",
+		ControlPlaneURL:           "http://envplane-control-plane.envplane.svc:8080",
 		ControlPlaneEndpointMode:  "sameCluster",
 		AllowInsecureControlPlane: true,
 		RegistrationToken:         "registration-token",
@@ -196,10 +196,10 @@ func TestConfigAllowsServiceDNSOnlyForSameCluster(t *testing.T) {
 }
 
 func TestConfigRejectsInsecureSameClusterWithoutExplicitOptIn(t *testing.T) {
-	if err := ValidateControlPlaneEndpoint("http://envpilot-control-plane.envpilot.svc:8080", "sameCluster"); err == nil {
+	if err := ValidateControlPlaneEndpoint("http://envplane-control-plane.envplane.svc:8080", "sameCluster"); err == nil {
 		t.Fatal("same-cluster HTTP must require explicit insecure opt-in")
 	}
-	if err := ValidateControlPlaneEndpointWithPolicy("http://envpilot-control-plane.envpilot.svc:8080", "sameCluster", true); err != nil {
+	if err := ValidateControlPlaneEndpointWithPolicy("http://envplane-control-plane.envplane.svc:8080", "sameCluster", true); err != nil {
 		t.Fatalf("explicit insecure opt-in must be accepted: %v", err)
 	}
 }
@@ -242,7 +242,7 @@ func TestClearPersistedAgentAuthTokenDropsOnlyRuntimeCredential(t *testing.T) {
 
 func TestCapabilityConfigFingerprintChangesOnlyForDiscoveryConfiguration(t *testing.T) {
 	base := Config{
-		NamespaceSelector:  "app.kubernetes.io/managed-by=envpilot",
+		NamespaceSelector:  "app.kubernetes.io/managed-by=envplane",
 		Namespaces:         []string{"team-a", "team-b"},
 		ExcludedNamespaces: []string{"kube-system", "default"},
 		FluxNamespace:      "flux-system",

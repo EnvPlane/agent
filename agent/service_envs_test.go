@@ -3,7 +3,7 @@ package agent
 import (
 	"testing"
 
-	"github.com/envpilot/contracts/domain"
+	"github.com/envplane/contracts/domain"
 )
 
 func TestBuildServiceEnvironmentVariablesGroupsByServiceAndContainer(t *testing.T) {

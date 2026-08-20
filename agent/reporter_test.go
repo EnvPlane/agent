@@ -10,7 +10,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/envpilot/contracts/domain"
+	"github.com/envplane/contracts/domain"
 )
 
 func TestHTTPStatusReporterPostsEnvironmentStatus(t *testing.T) {
@@ -30,7 +30,7 @@ func TestHTTPStatusReporterPostsEnvironmentStatus(t *testing.T) {
 	reporter := NewHTTPStatusReporterForAgent(server.URL, "agent-token", "dev-us", "agent-1", time.Second)
 	err := reporter.ReportNamespaceStatus(context.Background(), NamespaceStatusReport{
 		EnvironmentID: "kan-402",
-		Namespace:     "envpilot-pr-kan-402",
+		Namespace:     "envplane-pr-kan-402",
 		Status:        domain.StatusReady,
 		Message:       "namespace ready",
 	})
@@ -56,14 +56,14 @@ func TestKubernetesAgentReadsNamespaceStatusAndSendsToAPI(t *testing.T) {
 		if r.URL.Path != "/api/v1/namespaces" {
 			t.Fatalf("unexpected kubernetes path %s", r.URL.Path)
 		}
-		if r.URL.Query().Get("labelSelector") != "app.kubernetes.io/managed-by=envpilot" {
+		if r.URL.Query().Get("labelSelector") != "app.kubernetes.io/managed-by=envplane" {
 			t.Fatalf("label selector = %q", r.URL.Query().Get("labelSelector"))
 		}
 		_ = json.NewEncoder(w).Encode(namespaceList{
 			Items: []Namespace{
 				{
 					Metadata: NamespaceMetadata{
-						Name:   "envpilot-pr-kan-402",
+						Name:   "envplane-pr-kan-402",
 						Labels: map[string]string{environmentIDLabel: "kan-402"},
 					},
 					Status: NamespaceStatus{Phase: "Active"},
@@ -93,7 +93,7 @@ func TestKubernetesAgentReadsNamespaceStatusAndSendsToAPI(t *testing.T) {
 	}))
 	defer apiServer.Close()
 
-	source := NewKubernetesNamespaceSource(kubeServer.URL, "kube-token", "app.kubernetes.io/managed-by=envpilot", nil, kubeServer.Client())
+	source := NewKubernetesNamespaceSource(kubeServer.URL, "kube-token", "app.kubernetes.io/managed-by=envplane", nil, kubeServer.Client())
 	reporter := NewHTTPStatusReporterForAgent(apiServer.URL, "agent-token", "dev-us", "agent-1", time.Second)
 	watcher := NewNamespaceWatcherWithCollectors(source, reporter, nil, nil, nil, time.Second, nil)
 	if err := watcher.SyncOnce(context.Background()); err != nil {
@@ -131,7 +131,7 @@ func TestHTTPStatusReporterPostsKubernetesEvents(t *testing.T) {
 	reporter := NewHTTPStatusReporterForAgent(server.URL, "agent-token", "dev-us", "agent-1", time.Second)
 	err := reporter.ReportEvents(context.Background(), "kan-404", []domain.KubernetesEvent{
 		{
-			Namespace:    "envpilot-pr-kan-404",
+			Namespace:    "envplane-pr-kan-404",
 			Type:         "Warning",
 			Reason:       "FailedScheduling",
 			Message:      "0/3 nodes are available",
@@ -225,9 +225,9 @@ func TestHTTPStatusReporterRegistersAgentAndSendsHeartbeat(t *testing.T) {
 		ClusterID:         "dev-us",
 		AgentID:           "agent-1",
 		AgentVersion:      "1.2.3",
-		AgentNamespace:    "envpilot",
+		AgentNamespace:    "envplane",
 		FluxNamespace:     "flux-system",
-		NamespaceSelector: "app.kubernetes.io/managed-by=envpilot",
+		NamespaceSelector: "app.kubernetes.io/managed-by=envplane",
 		HeartbeatInterval: 30 * time.Second,
 	}
 	capabilities := ClusterCapabilities{KubernetesVersion: "v1.30.1", Capabilities: []string{"apps-v1", "flux-helm-v2"}}

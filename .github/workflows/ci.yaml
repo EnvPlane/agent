@@ -30,7 +30,7 @@ jobs:
             agent-go-cache-${{ runner.os }}-
       - name: Use published contracts module
         run: |
-          go mod edit -dropreplace=github.com/envpilot/contracts
+          go mod edit -dropreplace=github.com/envplane/contracts
           go mod tidy
       - name: Scan Go dependencies
         run: go run golang.org/x/vuln/cmd/govulncheck@v1.7.0 ./...
