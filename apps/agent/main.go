@@ -60,13 +60,14 @@ func runAgent(logger *slog.Logger) {
 		logger.Error("cluster capability discovery failed", "error", err)
 		os.Exit(1)
 	}
+	bootstrapRegistrationToken := cfg.RegistrationToken
 	cfg, err = ensureRuntimeAuth(ctx, cfg, reporter, capabilities, logger)
 	if err != nil {
 		logger.Error("agent registration failed", "error", err)
 		os.Exit(1)
 	}
 	reporter.SetToken(cfg.AgentAuthToken)
-	go runHeartbeat(ctx, cfg, reporter, source, logger)
+	go runHeartbeat(ctx, cfg, reporter, source, logger, bootstrapRegistrationToken)
 
 	logger.Info("envplane agent started", "cluster_id", cfg.ClusterID, "agent_id", cfg.AgentID, "control_plane_url", cfg.ControlPlaneURL)
 	if err := watcher.Run(ctx); err != nil {
@@ -193,7 +194,7 @@ func ensureRuntimeAuth(ctx context.Context, cfg clusteragent.Config, reporter *c
 	return cfg, nil
 }
 
-func runHeartbeat(ctx context.Context, cfg clusteragent.Config, reporter *clusteragent.HTTPStatusReporter, source *clusteragent.KubernetesNamespaceSource, logger *slog.Logger) {
+func runHeartbeat(ctx context.Context, cfg clusteragent.Config, reporter *clusteragent.HTTPStatusReporter, source *clusteragent.KubernetesNamespaceSource, logger *slog.Logger, bootstrapRegistrationToken string) {
 	ticker := time.NewTicker(cfg.HeartbeatInterval)
 	defer ticker.Stop()
 	var scanRunning atomic.Bool
@@ -217,23 +218,27 @@ func runHeartbeat(ctx context.Context, cfg clusteragent.Config, reporter *cluste
 			}
 			if err := reporter.ReportHeartbeatWithEndpointPreflight(tickCtx, cfg, capabilities, status, statusErr, preflight); err != nil {
 				cancel()
-				if isFixtureIdentityReissuedError(err) {
+				if (isFixtureIdentityReissuedError(err) || isAgentAuthTokenNotIssuedError(err)) && strings.TrimSpace(bootstrapRegistrationToken) != "" {
+					recoveryCtx, recoveryCancel := context.WithTimeout(ctx, 2*cfg.ReportTimeout)
 					// The control plane re-opened the explicit E2E fixture's hashed
-					// registration claim. Drop only the persisted runtime token and
-					// immediately re-register from the mounted Secret; no operator
-					// edit or raw-token persistence is needed.
+					// registration claim, or rejected a stale runtime token. Drop only
+					// the persisted runtime token and immediately re-register from the
+					// mounted Secret; no operator edit or raw-token persistence is needed.
 					if clearErr := cfg.ClearPersistedAgentAuthToken(); clearErr != nil {
 						logger.Error("clear stale agent auth token", "error", clearErr)
+						recoveryCancel()
 						continue
 					}
 					cfg.AgentAuthToken = ""
-					cfg, err = ensureRuntimeAuth(tickCtx, cfg, reporter, capabilities, logger)
+					cfg.RegistrationToken = bootstrapRegistrationToken
+					cfg, err = ensureRuntimeAuth(recoveryCtx, cfg, reporter, capabilities, logger)
+					recoveryCancel()
 					if err != nil {
 						logger.Error("agent fixture identity recovery registration failed", "cluster_id", cfg.ClusterID, "agent_id", cfg.AgentID, "error", err)
 						continue
 					}
 					reporter.SetToken(cfg.AgentAuthToken)
-					logger.Info("agent fixture identity recovered", "cluster_id", cfg.ClusterID, "agent_id", cfg.AgentID)
+					logger.Info("agent runtime identity recovered", "cluster_id", cfg.ClusterID, "agent_id", cfg.AgentID)
 					continue
 				}
 				logger.Error("agent heartbeat failed", "cluster_id", cfg.ClusterID, "agent_id", cfg.AgentID, "error", err)
@@ -258,6 +263,15 @@ func runHeartbeat(ctx context.Context, cfg clusteragent.Config, reporter *cluste
 func isFixtureIdentityReissuedError(err error) bool {
 	var apiErr *clusteragent.APIError
 	return err != nil && errors.As(err, &apiErr) && apiErr.Code == "fixture_identity_reissued"
+}
+
+func isAgentAuthTokenNotIssuedError(err error) bool {
+	var apiErr *clusteragent.APIError
+	if err == nil || !errors.As(err, &apiErr) {
+		return false
+	}
+	message := strings.ToLower(apiErr.Message)
+	return apiErr.Status == 401 && strings.Contains(message, "auth token is not issued")
 }
 
 func runResourceScanTick(ctx context.Context, cfg clusteragent.Config, reporter *clusteragent.HTTPStatusReporter, source *clusteragent.KubernetesNamespaceSource, logger *slog.Logger) error {
