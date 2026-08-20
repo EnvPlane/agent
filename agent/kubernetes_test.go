@@ -32,14 +32,14 @@ func TestKubernetesNamespaceSourceListsSelectedNamespaces(t *testing.T) {
 		gotSelector = r.URL.Query().Get("labelSelector")
 		_ = json.NewEncoder(w).Encode(namespaceList{
 			Items: []Namespace{
-				{Metadata: NamespaceMetadata{Name: "envpilot-pr-kan-402"}},
-				{Metadata: NamespaceMetadata{Name: "envpilot-pr-kan-999"}},
+				{Metadata: NamespaceMetadata{Name: "envplane-pr-kan-402"}},
+				{Metadata: NamespaceMetadata{Name: "envplane-pr-kan-999"}},
 			},
 		})
 	}))
 	defer server.Close()
 
-	source := NewKubernetesNamespaceSource(server.URL, "kube-token", "app.kubernetes.io/managed-by=envpilot", []string{"envpilot-pr-kan-402"}, server.Client())
+	source := NewKubernetesNamespaceSource(server.URL, "kube-token", "app.kubernetes.io/managed-by=envplane", []string{"envplane-pr-kan-402"}, server.Client())
 	items, err := source.ListNamespaces(context.Background())
 	if err != nil {
 		t.Fatalf("list namespaces: %v", err)
@@ -48,10 +48,10 @@ func TestKubernetesNamespaceSourceListsSelectedNamespaces(t *testing.T) {
 	if gotAuth != "Bearer kube-token" {
 		t.Fatalf("authorization header = %q", gotAuth)
 	}
-	if gotSelector != "app.kubernetes.io/managed-by=envpilot" {
+	if gotSelector != "app.kubernetes.io/managed-by=envplane" {
 		t.Fatalf("label selector = %q", gotSelector)
 	}
-	if len(items) != 1 || items[0].Metadata.Name != "envpilot-pr-kan-402" {
+	if len(items) != 1 || items[0].Metadata.Name != "envplane-pr-kan-402" {
 		t.Fatalf("unexpected namespaces: %#v", items)
 	}
 }
@@ -128,15 +128,15 @@ func TestKubernetesNamespaceSourceListsDeploymentsPodsAndIngresses(t *testing.T)
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		paths = append(paths, r.URL.Path)
 		switch r.URL.Path {
-		case "/apis/apps/v1/namespaces/envpilot-pr-kan-403/deployments":
+		case "/apis/apps/v1/namespaces/envplane-pr-kan-403/deployments":
 			_ = json.NewEncoder(w).Encode(deploymentList{
 				Items: []Deployment{{Metadata: DeploymentMetadata{Name: "cms-api"}}},
 			})
-		case "/api/v1/namespaces/envpilot-pr-kan-403/pods":
+		case "/api/v1/namespaces/envplane-pr-kan-403/pods":
 			_ = json.NewEncoder(w).Encode(podList{
 				Items: []Pod{{Metadata: PodMetadata{Name: "cms-api-abc"}}},
 			})
-		case "/apis/networking.k8s.io/v1/namespaces/envpilot-pr-kan-403/ingresses":
+		case "/apis/networking.k8s.io/v1/namespaces/envplane-pr-kan-403/ingresses":
 			_ = json.NewEncoder(w).Encode(ingressList{
 				Items: []Ingress{{
 					Metadata: IngressMetadata{Name: "preview"},
@@ -151,15 +151,15 @@ func TestKubernetesNamespaceSourceListsDeploymentsPodsAndIngresses(t *testing.T)
 	defer server.Close()
 
 	source := NewKubernetesNamespaceSource(server.URL, "kube-token", "", nil, server.Client())
-	deployments, err := source.ListDeployments(context.Background(), "envpilot-pr-kan-403")
+	deployments, err := source.ListDeployments(context.Background(), "envplane-pr-kan-403")
 	if err != nil {
 		t.Fatalf("list deployments: %v", err)
 	}
-	pods, err := source.ListPods(context.Background(), "envpilot-pr-kan-403")
+	pods, err := source.ListPods(context.Background(), "envplane-pr-kan-403")
 	if err != nil {
 		t.Fatalf("list pods: %v", err)
 	}
-	ingresses, err := source.ListIngresses(context.Background(), "envpilot-pr-kan-403")
+	ingresses, err := source.ListIngresses(context.Background(), "envplane-pr-kan-403")
 	if err != nil {
 		t.Fatalf("list ingresses: %v", err)
 	}
@@ -201,7 +201,7 @@ func TestKubernetesNamespaceSourceFollowsResourceContinuationTokens(t *testing.T
 	defer server.Close()
 
 	source := NewKubernetesNamespaceSource(server.URL, "token", "", nil, server.Client())
-	items, err := source.ListDeployments(context.Background(), "envpilot")
+	items, err := source.ListDeployments(context.Background(), "envplane")
 	if err != nil {
 		t.Fatalf("list deployments: %v", err)
 	}
@@ -217,7 +217,7 @@ func TestKubernetesNamespaceSourceListsEvents(t *testing.T) {
 		_ = json.NewEncoder(w).Encode(eventList{
 			Items: []KubernetesEvent{
 				{
-					Metadata: EventMetadata{Name: "event-1", Namespace: "envpilot-pr-kan-404"},
+					Metadata: EventMetadata{Name: "event-1", Namespace: "envplane-pr-kan-404"},
 					Type:     "Warning",
 					Reason:   "FailedScheduling",
 					Message:  "0/3 nodes are available",
@@ -228,11 +228,11 @@ func TestKubernetesNamespaceSourceListsEvents(t *testing.T) {
 	defer server.Close()
 
 	source := NewKubernetesNamespaceSource(server.URL, "kube-token", "", nil, server.Client())
-	events, err := source.ListEvents(context.Background(), "envpilot-pr-kan-404")
+	events, err := source.ListEvents(context.Background(), "envplane-pr-kan-404")
 	if err != nil {
 		t.Fatalf("list events: %v", err)
 	}
-	if gotPath != "/api/v1/namespaces/envpilot-pr-kan-404/events" {
+	if gotPath != "/api/v1/namespaces/envplane-pr-kan-404/events" {
 		t.Fatalf("path = %q", gotPath)
 	}
 	if len(events) != 1 || events[0].Reason != "FailedScheduling" {
@@ -249,9 +249,9 @@ func TestKubernetesNamespaceSourceListsFluxResources(t *testing.T) {
 			_ = json.NewEncoder(w).Encode(fluxKustomizationList{
 				Items: []FluxKustomization{{Metadata: FluxMetadata{Name: "kan-405.bethunder", Namespace: "flux-system"}}},
 			})
-		case "/apis/helm.toolkit.fluxcd.io/v2/namespaces/envpilot-pr-kan-405/helmreleases":
+		case "/apis/helm.toolkit.fluxcd.io/v2/namespaces/envplane-pr-kan-405/helmreleases":
 			_ = json.NewEncoder(w).Encode(helmReleaseList{
-				Items: []HelmRelease{{Metadata: FluxMetadata{Name: "nginx", Namespace: "envpilot-pr-kan-405"}}},
+				Items: []HelmRelease{{Metadata: FluxMetadata{Name: "nginx", Namespace: "envplane-pr-kan-405"}}},
 			})
 		default:
 			http.NotFound(w, r)
@@ -264,7 +264,7 @@ func TestKubernetesNamespaceSourceListsFluxResources(t *testing.T) {
 	if err != nil {
 		t.Fatalf("list flux kustomizations: %v", err)
 	}
-	helmReleases, err := source.ListHelmReleases(context.Background(), "envpilot-pr-kan-405")
+	helmReleases, err := source.ListHelmReleases(context.Background(), "envplane-pr-kan-405")
 	if err != nil {
 		t.Fatalf("list helm releases: %v", err)
 	}

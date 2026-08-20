@@ -5,7 +5,7 @@ import (
 	"sort"
 	"strings"
 
-	"github.com/envpilot/contracts/domain"
+	"github.com/envplane/contracts/domain"
 )
 
 func BuildServiceGraph(snapshots []domain.ResourceSnapshot) domain.ServiceGraph {

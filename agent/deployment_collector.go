@@ -6,7 +6,7 @@ import (
 	"sort"
 	"strings"
 
-	"github.com/envpilot/contracts/domain"
+	"github.com/envplane/contracts/domain"
 )
 
 type DeploymentStatusCollector struct {

@@ -15,7 +15,7 @@ import (
 const (
 	defaultServiceAccountToken = "/var/run/secrets/kubernetes.io/serviceaccount/token"
 	defaultServiceAccountCA    = "/var/run/secrets/kubernetes.io/serviceaccount/ca.crt"
-	defaultExcludedNamespaces  = "default,kube-system,kube-public,kube-node-lease,local-path-storage,ingress-nginx,kubernetes-dashboard,envpilot,envpilot-system"
+	defaultExcludedNamespaces  = "default,kube-system,kube-public,kube-node-lease,local-path-storage,ingress-nginx,kubernetes-dashboard,envplane,envplane-system"
 	defaultKubernetesQPS       = 20.0
 	defaultKubernetesBurst     = 40
 )
@@ -87,46 +87,46 @@ func (c Config) CapabilityConfigFingerprint() string {
 }
 
 func ConfigFromEnv() Config {
-	agentAuthTokenFile := getenv("ENVPILOT_AGENT_AUTH_TOKEN_FILE", "")
-	agentAuthToken := getenv("ENVPILOT_AGENT_AUTH_TOKEN", "")
+	agentAuthTokenFile := getenv("ENVPLANE_AGENT_AUTH_TOKEN_FILE", "")
+	agentAuthToken := getenv("ENVPLANE_AGENT_AUTH_TOKEN", "")
 	if strings.TrimSpace(agentAuthToken) == "" {
 		agentAuthToken = readTokenFile(agentAuthTokenFile)
 	}
-	agentNamespace := getenv("ENVPILOT_AGENT_NAMESPACE", "")
-	excludedNamespaces := splitCSV(getenv("ENVPILOT_WATCH_EXCLUDED_NAMESPACES", defaultExcludedNamespaces))
+	agentNamespace := getenv("ENVPLANE_AGENT_NAMESPACE", "")
+	excludedNamespaces := splitCSV(getenv("ENVPLANE_WATCH_EXCLUDED_NAMESPACES", defaultExcludedNamespaces))
 	if strings.TrimSpace(agentNamespace) != "" {
 		excludedNamespaces = append(excludedNamespaces, strings.TrimSpace(agentNamespace))
 	}
 	cfg := Config{
-		ControlPlaneURL:           getenv("ENVPILOT_CONTROL_PLANE_URL", ""),
-		ControlPlaneEndpointMode:  strings.TrimSpace(getenv("ENVPILOT_CONTROL_PLANE_ENDPOINT_MODE", "sameCluster")),
-		ControlPlaneCAFile:        getenv("ENVPILOT_CONTROL_PLANE_CA_FILE", ""),
-		ControlPlaneTLSServerName: getenv("ENVPILOT_CONTROL_PLANE_TLS_SERVER_NAME", ""),
-		AllowInsecureControlPlane: getenvBool("ENVPILOT_ALLOW_INSECURE_CONTROL_PLANE", false),
-		RegistrationToken:         getenv("ENVPILOT_AGENT_REGISTRATION_TOKEN", ""),
+		ControlPlaneURL:           getenv("ENVPLANE_CONTROL_PLANE_URL", ""),
+		ControlPlaneEndpointMode:  strings.TrimSpace(getenv("ENVPLANE_CONTROL_PLANE_ENDPOINT_MODE", "sameCluster")),
+		ControlPlaneCAFile:        getenv("ENVPLANE_CONTROL_PLANE_CA_FILE", ""),
+		ControlPlaneTLSServerName: getenv("ENVPLANE_CONTROL_PLANE_TLS_SERVER_NAME", ""),
+		AllowInsecureControlPlane: getenvBool("ENVPLANE_ALLOW_INSECURE_CONTROL_PLANE", false),
+		RegistrationToken:         getenv("ENVPLANE_AGENT_REGISTRATION_TOKEN", ""),
 		AgentAuthToken:            agentAuthToken,
 		AgentAuthTokenFile:        agentAuthTokenFile,
-		TerminalEventQueueDir:     getenv("ENVPILOT_TERMINAL_EVENT_QUEUE_DIR", "/var/lib/envpilot-agent/auth/events"),
-		BootstrapProjectID:        getenv("ENVPILOT_BOOTSTRAP_PROJECT_ID", ""),
-		ClusterID:                 getenv("ENVPILOT_CLUSTER_ID", "default"),
-		AgentID:                   getenv("ENVPILOT_AGENT_ID", hostname()),
+		TerminalEventQueueDir:     getenv("ENVPLANE_TERMINAL_EVENT_QUEUE_DIR", "/var/lib/envplane-agent/auth/events"),
+		BootstrapProjectID:        getenv("ENVPLANE_BOOTSTRAP_PROJECT_ID", ""),
+		ClusterID:                 getenv("ENVPLANE_CLUSTER_ID", "default"),
+		AgentID:                   getenv("ENVPLANE_AGENT_ID", hostname()),
 		AgentNamespace:            agentNamespace,
-		AgentVersion:              getenv("ENVPILOT_AGENT_VERSION", "dev"),
-		KubernetesAPIURL:          getenv("ENVPILOT_KUBERNETES_API_URL", inClusterAPIURL()),
-		KubernetesToken:           getenv("ENVPILOT_KUBERNETES_TOKEN_PATH", defaultServiceAccountToken),
-		KubernetesCA:              getenv("ENVPILOT_KUBERNETES_CA_PATH", defaultServiceAccountCA),
+		AgentVersion:              getenv("ENVPLANE_AGENT_VERSION", "dev"),
+		KubernetesAPIURL:          getenv("ENVPLANE_KUBERNETES_API_URL", inClusterAPIURL()),
+		KubernetesToken:           getenv("ENVPLANE_KUBERNETES_TOKEN_PATH", defaultServiceAccountToken),
+		KubernetesCA:              getenv("ENVPLANE_KUBERNETES_CA_PATH", defaultServiceAccountCA),
 		// An empty selector intentionally means all namespaces.
-		NamespaceSelector:  strings.TrimSpace(getenv("ENVPILOT_WATCH_NAMESPACE_SELECTOR", "")),
-		Namespaces:         splitCSV(getenv("ENVPILOT_WATCH_NAMESPACES", "")),
+		NamespaceSelector:  strings.TrimSpace(getenv("ENVPLANE_WATCH_NAMESPACE_SELECTOR", "")),
+		Namespaces:         splitCSV(getenv("ENVPLANE_WATCH_NAMESPACES", "")),
 		ExcludedNamespaces: excludedNamespaces,
-		ReadSecrets:        getenvBool("ENVPILOT_DISCOVERY_READ_SECRETS", false),
-		FluxNamespace:      getenv("ENVPILOT_FLUX_NAMESPACE", "flux-system"),
-		ResyncInterval:     time.Duration(getenvInt("ENVPILOT_AGENT_RESYNC_SECONDS", 30)) * time.Second,
-		ReportTimeout:      time.Duration(getenvInt("ENVPILOT_AGENT_REPORT_TIMEOUT_SECONDS", 10)) * time.Second,
-		HeartbeatInterval:  time.Duration(getenvInt("ENVPILOT_AGENT_HEARTBEAT_SECONDS", 30)) * time.Second,
-		KubernetesQPS:      getenvFloat("ENVPILOT_KUBERNETES_QPS", defaultKubernetesQPS),
-		KubernetesBurst:    getenvInt("ENVPILOT_KUBERNETES_BURST", defaultKubernetesBurst),
-		RemoteGeneration:   int64(getenvInt("ENVPILOT_REMOTE_GENERATION", 0)),
+		ReadSecrets:        getenvBool("ENVPLANE_DISCOVERY_READ_SECRETS", false),
+		FluxNamespace:      getenv("ENVPLANE_FLUX_NAMESPACE", "flux-system"),
+		ResyncInterval:     time.Duration(getenvInt("ENVPLANE_AGENT_RESYNC_SECONDS", 30)) * time.Second,
+		ReportTimeout:      time.Duration(getenvInt("ENVPLANE_AGENT_REPORT_TIMEOUT_SECONDS", 10)) * time.Second,
+		HeartbeatInterval:  time.Duration(getenvInt("ENVPLANE_AGENT_HEARTBEAT_SECONDS", 30)) * time.Second,
+		KubernetesQPS:      getenvFloat("ENVPLANE_KUBERNETES_QPS", defaultKubernetesQPS),
+		KubernetesBurst:    getenvInt("ENVPLANE_KUBERNETES_BURST", defaultKubernetesBurst),
+		RemoteGeneration:   int64(getenvInt("ENVPLANE_REMOTE_GENERATION", 0)),
 	}
 	cfg.EnvDiagnostics = legacyDiagnostics()
 	return cfg
@@ -194,7 +194,7 @@ func ValidateControlPlaneEndpointWithPolicy(rawURL, endpointMode string, allowIn
 		return fmt.Errorf("ENVPLANE_CONTROL_PLANE_URL must be an HTTP(S) URL")
 	}
 	if parsed.Scheme == "http" && !allowInsecure {
-		return fmt.Errorf("ENVPLANE_CONTROL_PLANE_URL must use HTTPS unless ENVPILOT_ALLOW_INSECURE_CONTROL_PLANE=true")
+		return fmt.Errorf("ENVPLANE_CONTROL_PLANE_URL must use HTTPS unless ENVPLANE_ALLOW_INSECURE_CONTROL_PLANE=true")
 	}
 	if mode != "remote" {
 		return nil
@@ -203,7 +203,7 @@ func ValidateControlPlaneEndpointWithPolicy(rawURL, endpointMode string, allowIn
 		return fmt.Errorf("remote ENVPLANE_CONTROL_PLANE_URL must be an explicit stable HTTPS URL without credentials, query parameters, or fragments")
 	}
 	host := strings.ToLower(strings.TrimSpace(parsed.Hostname()))
-	if host == "localhost" || host == "127.0.0.1" || host == "::1" || host == "envpilot.local" || host == "host.minikube.internal" || strings.HasSuffix(host, ".svc") || strings.Contains(host, ".svc.") {
+	if host == "localhost" || host == "127.0.0.1" || host == "::1" || host == "envplane.local" || host == "host.minikube.internal" || strings.HasSuffix(host, ".svc") || strings.Contains(host, ".svc.") {
 		return fmt.Errorf("remote ENVPLANE_CONTROL_PLANE_URL must be target-pod-reachable, not host-local or Kubernetes Service DNS")
 	}
 	return nil
@@ -260,8 +260,8 @@ func inClusterAPIURL() string {
 }
 
 func getenv(key, fallback string) string {
-	if strings.HasPrefix(key, "ENVPILOT_") {
-		canonical := "ENVPLANE_" + strings.TrimPrefix(key, "ENVPILOT_")
+	if strings.HasPrefix(key, "ENVPLANE_") {
+		canonical := "ENVPLANE_" + strings.TrimPrefix(key, "ENVPLANE_")
 		if value, set := os.LookupEnv(canonical); set {
 			return strings.TrimSpace(value)
 		}
@@ -313,7 +313,7 @@ func legacyDiagnostics() []string {
 	result := []string{}
 	for _, entry := range os.Environ() {
 		name, _, ok := strings.Cut(entry, "=")
-		if !ok || !strings.HasPrefix(name, "ENVPILOT_") {
+		if !ok || !strings.HasPrefix(name, "ENVPLANE_") {
 			continue
 		}
 		item := "deprecated:" + name
@@ -339,7 +339,7 @@ func splitCSV(value string) []string {
 func hostname() string {
 	value, err := os.Hostname()
 	if err != nil {
-		return "envpilot-agent"
+		return "envplane-agent"
 	}
 	return value
 }

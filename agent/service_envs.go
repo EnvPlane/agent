@@ -4,7 +4,7 @@ import (
 	"sort"
 	"strings"
 
-	"github.com/envpilot/contracts/domain"
+	"github.com/envplane/contracts/domain"
 )
 
 func BuildServiceEnvironmentVariables(snapshots []domain.ResourceSnapshot, graph domain.ServiceGraph) domain.ServiceEnvironmentVariables {

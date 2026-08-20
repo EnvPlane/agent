@@ -1,5 +1,5 @@
-module github.com/envpilot/agent
+module github.com/envplane/agent
 
 go 1.25.13
 
-require github.com/envpilot/contracts v0.1.35
+require github.com/envplane/contracts v0.1.36

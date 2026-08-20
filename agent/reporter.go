@@ -12,8 +12,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/envpilot/contracts/domain"
-	"github.com/envpilot/contracts/sdk/go/envplanesdk"
+	"github.com/envplane/contracts/domain"
+	"github.com/envplane/contracts/sdk/go/envplanesdk"
 )
 
 type StatusReporter interface {

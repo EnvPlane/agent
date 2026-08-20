@@ -9,7 +9,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/envpilot/contracts/domain"
+	"github.com/envplane/contracts/domain"
 )
 
 func TestNamespaceWatcherPersistsAndDrainsDeletedEvents(t *testing.T) {
@@ -17,7 +17,7 @@ func TestNamespaceWatcherPersistsAndDrainsDeletedEvents(t *testing.T) {
 	reporter := &flakyWatcherReporter{remainingFailures: watchReportAttempts}
 	watcher := NewNamespaceWatcher(&fakeNamespaceSource{}, reporter, time.Hour, nil)
 	watcher.SetTerminalEventQueueDir(queueDir)
-	namespace := Namespace{Metadata: NamespaceMetadata{Name: "envpilot-pr-lost", Labels: map[string]string{environmentIDLabel: "lost"}}, Status: NamespaceStatus{Phase: "Active"}}
+	namespace := Namespace{Metadata: NamespaceMetadata{Name: "envplane-pr-lost", Labels: map[string]string{environmentIDLabel: "lost"}}, Status: NamespaceStatus{Phase: "Active"}}
 	if err := watcher.reportEvent(context.Background(), "DELETED", namespace); err != nil {
 		t.Fatalf("deleted event should be queued without stopping watcher: %v", err)
 	}
@@ -63,7 +63,7 @@ func TestNamespaceWatcherReportsEnvNamespaceStatus(t *testing.T) {
 		namespaces: []Namespace{
 			{
 				Metadata: NamespaceMetadata{
-					Name:   "envpilot-pr-kan-402",
+					Name:   "envplane-pr-kan-402",
 					Labels: map[string]string{environmentIDLabel: "kan-402"},
 				},
 				Status: NamespaceStatus{Phase: "Active"},
@@ -94,7 +94,7 @@ func TestNamespaceWatcherReportsDeploymentCollectorStatus(t *testing.T) {
 		namespaces: []Namespace{
 			{
 				Metadata: NamespaceMetadata{
-					Name:   "envpilot-pr-kan-404",
+					Name:   "envplane-pr-kan-404",
 					Labels: map[string]string{environmentIDLabel: "kan-404"},
 				},
 				Status: NamespaceStatus{Phase: "Active"},
@@ -150,7 +150,7 @@ func TestNamespaceWatcherReportsKubernetesEvents(t *testing.T) {
 		namespaces: []Namespace{
 			{
 				Metadata: NamespaceMetadata{
-					Name:   "envpilot-pr-kan-405",
+					Name:   "envplane-pr-kan-405",
 					Labels: map[string]string{environmentIDLabel: "kan-405"},
 				},
 				Status: NamespaceStatus{Phase: "Active"},
@@ -160,7 +160,7 @@ func TestNamespaceWatcherReportsKubernetesEvents(t *testing.T) {
 	events := &fakeEventSource{
 		events: []KubernetesEvent{
 			{
-				Metadata: EventMetadata{UID: "event-1", Namespace: "envpilot-pr-kan-405"},
+				Metadata: EventMetadata{UID: "event-1", Namespace: "envplane-pr-kan-405"},
 				Type:     "Warning",
 				Reason:   "FailedScheduling",
 				Message:  "0/3 nodes are available",
@@ -195,7 +195,7 @@ func TestNamespaceWatcherReportsKubernetesEvents(t *testing.T) {
 func TestBuildNamespaceStatusReportMapsDeletionEvent(t *testing.T) {
 	report, ok := BuildNamespaceStatusReport("DELETED", Namespace{
 		Metadata: NamespaceMetadata{
-			Name:   "envpilot-pr-kan-403",
+			Name:   "envplane-pr-kan-403",
 			Labels: map[string]string{environmentIDLabel: "kan-403"},
 		},
 		Status: NamespaceStatus{Phase: "Terminating"},
@@ -216,10 +216,10 @@ func TestNamespaceWatcherReportsFluxStatus(t *testing.T) {
 		namespaces: []Namespace{
 			{
 				Metadata: NamespaceMetadata{
-					Name: "envpilot-pr-kan-406",
+					Name: "envplane-pr-kan-406",
 					Labels: map[string]string{
 						environmentIDLabel:    "kan-406",
-						"envpilot.io/product": "bethunder",
+						"envplane.io/product": "bethunder",
 					},
 				},
 				Status: NamespaceStatus{Phase: "Active"},
@@ -238,7 +238,7 @@ func TestNamespaceWatcherReportsFluxStatus(t *testing.T) {
 		},
 		helmReleases: []HelmRelease{
 			{
-				Metadata: FluxMetadata{Name: "nginx", Namespace: "envpilot-pr-kan-406"},
+				Metadata: FluxMetadata{Name: "nginx", Namespace: "envplane-pr-kan-406"},
 				Status:   FluxStatus{Conditions: []FluxCondition{{Type: "Ready", Status: "True", Reason: "InstallSucceeded"}}},
 			},
 		},

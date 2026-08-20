@@ -6,7 +6,7 @@ import (
 	"sort"
 	"strings"
 
-	"github.com/envpilot/contracts/domain"
+	"github.com/envplane/contracts/domain"
 )
 
 type FluxStatusCollector struct {
@@ -33,7 +33,7 @@ func BuildFluxStatus(environmentID string, namespace Namespace, kustomizations [
 	kustomizationStatuses := make([]domain.FluxResourceStatus, 0, len(kustomizations))
 	helmReleaseStatuses := make([]domain.FluxResourceStatus, 0, len(helmReleases))
 
-	product := strings.TrimSpace(namespace.Metadata.Labels["envpilot.io/product"])
+	product := strings.TrimSpace(namespace.Metadata.Labels["envplane.io/product"])
 	for _, item := range kustomizations {
 		if !matchesEnvironmentKustomization(environmentID, product, item) {
 			continue
