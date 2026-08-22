@@ -686,7 +686,7 @@ func defaultResourceAPIVersion(kind string) string {
 	switch strings.TrimSpace(kind) {
 	case "Deployment", "StatefulSet":
 		return "apps/v1"
-	case "Ingress":
+	case "Ingress", "NetworkPolicy":
 		return "networking.k8s.io/v1"
 	case "Job", "CronJob":
 		return "batch/v1"

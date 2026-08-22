@@ -250,9 +250,10 @@ func TestLabelsFromKubernetesLabelSelectorPreservesServiceStyleMap(t *testing.T)
 
 func TestSanitizeResourceManifestDefaultsRequiredAPIVersion(t *testing.T) {
 	for kind, expectedAPIVersion := range map[string]string{
-		"ConfigMap":  "v1",
-		"Deployment": "apps/v1",
-		"Ingress":    "networking.k8s.io/v1",
+		"ConfigMap":     "v1",
+		"Deployment":    "apps/v1",
+		"Ingress":       "networking.k8s.io/v1",
+		"NetworkPolicy": "networking.k8s.io/v1",
 	} {
 		manifest := sanitizeResourceManifest(kind, map[string]any{
 			"metadata": map[string]any{"name": "fixture"},
@@ -269,19 +270,31 @@ func TestSanitizeConfigMapPreservesDataAndBinaryDataWithoutRuntimeFields(t *test
 		"data": map[string]any{"app.yaml": "enabled: true"}, "binaryData": map[string]any{"blob": "YQ=="},
 		"immutable": true, "status": map[string]any{"observed": true},
 	}, "one", "settings")
-	if manifest["data"].(map[string]any)["app.yaml"] != "enabled: true" || manifest["binaryData"].(map[string]any)["blob"] != "YQ==" { t.Fatalf("ConfigMap data was lost: %#v", manifest) }
-	metadata := manifest["metadata"].(map[string]any); if _, ok := metadata["uid"]; ok { t.Fatal("uid leaked into sanitized metadata") }; if _, ok := manifest["status"]; ok { t.Fatal("status leaked into sanitized manifest") }
+	if manifest["data"].(map[string]any)["app.yaml"] != "enabled: true" || manifest["binaryData"].(map[string]any)["blob"] != "YQ==" {
+		t.Fatalf("ConfigMap data was lost: %#v", manifest)
+	}
+	metadata := manifest["metadata"].(map[string]any)
+	if _, ok := metadata["uid"]; ok {
+		t.Fatal("uid leaked into sanitized metadata")
+	}
+	if _, ok := manifest["status"]; ok {
+		t.Fatal("status leaked into sanitized manifest")
+	}
 }
 
 func TestRuntimeChildrenAreExcludedFromDesiredState(t *testing.T) {
 	cronJob := map[string]any{"metadata": map[string]any{"ownerReferences": []any{map[string]any{"kind": "CronJob"}}}}
 	completed := map[string]any{"status": map[string]any{"completionTime": "2026-08-18T00:00:00Z"}}
-	if !isExcludedRuntimeJob(cronJob) || !isExcludedRuntimeJob(completed) { t.Fatal("runtime Job children must be excluded") }
+	if !isExcludedRuntimeJob(cronJob) || !isExcludedRuntimeJob(completed) {
+		t.Fatal("runtime Job children must be excluded")
+	}
 }
 
 func TestCompletenessReportIsNamespacedAndDeterministic(t *testing.T) {
 	report := buildCompletenessReport([]string{"one", "two"}, []domain.ResourceSnapshot{{Kind: "Service", Namespace: "one", Name: "api"}, {Kind: "Service", Namespace: "two", Name: "api"}}, []string{"one ConfigMap: unsupported API"})
-	if len(report.Namespaces) != 2 || report.Namespaces[0].Namespace != "one" || report.Namespaces[1].Namespace != "two" || report.Complete { t.Fatalf("unexpected completeness report: %#v", report) }
+	if len(report.Namespaces) != 2 || report.Namespaces[0].Namespace != "one" || report.Namespaces[1].Namespace != "two" || report.Complete {
+		t.Fatalf("unexpected completeness report: %#v", report)
+	}
 }
 
 func TestGetNamespaceResourceForbiddenIsNonBlocking(t *testing.T) {
