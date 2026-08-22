@@ -250,10 +250,12 @@ func TestLabelsFromKubernetesLabelSelectorPreservesServiceStyleMap(t *testing.T)
 
 func TestSanitizeResourceManifestDefaultsRequiredAPIVersion(t *testing.T) {
 	for kind, expectedAPIVersion := range map[string]string{
-		"ConfigMap":     "v1",
-		"Deployment":    "apps/v1",
-		"Ingress":       "networking.k8s.io/v1",
-		"NetworkPolicy": "networking.k8s.io/v1",
+		"ConfigMap":               "v1",
+		"Deployment":              "apps/v1",
+		"Ingress":                 "networking.k8s.io/v1",
+		"NetworkPolicy":           "networking.k8s.io/v1",
+		"HorizontalPodAutoscaler": "autoscaling/v2",
+		"PodDisruptionBudget":     "policy/v1",
 	} {
 		manifest := sanitizeResourceManifest(kind, map[string]any{
 			"metadata": map[string]any{"name": "fixture"},

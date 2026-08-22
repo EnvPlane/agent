@@ -684,12 +684,16 @@ func sanitizeResourceAnnotationsAny(kind string, value any) map[string]any {
 // scanner only synthesizes manifests for these built-in resource kinds.
 func defaultResourceAPIVersion(kind string) string {
 	switch strings.TrimSpace(kind) {
-	case "Deployment", "StatefulSet":
+	case "Deployment", "StatefulSet", "DaemonSet", "ReplicaSet":
 		return "apps/v1"
 	case "Ingress", "NetworkPolicy":
 		return "networking.k8s.io/v1"
 	case "Job", "CronJob":
 		return "batch/v1"
+	case "HorizontalPodAutoscaler":
+		return "autoscaling/v2"
+	case "PodDisruptionBudget":
+		return "policy/v1"
 	case "Namespace", "Service", "ConfigMap", "ResourceQuota", "LimitRange", "Secret", "PersistentVolumeClaim", "ServiceAccount":
 		return "v1"
 	default:
