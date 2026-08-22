@@ -283,3 +283,22 @@ func TestCompletenessReportIsNamespacedAndDeterministic(t *testing.T) {
 	report := buildCompletenessReport([]string{"one", "two"}, []domain.ResourceSnapshot{{Kind: "Service", Namespace: "one", Name: "api"}, {Kind: "Service", Namespace: "two", Name: "api"}}, []string{"one ConfigMap: unsupported API"})
 	if len(report.Namespaces) != 2 || report.Namespaces[0].Namespace != "one" || report.Namespaces[1].Namespace != "two" || report.Complete { t.Fatalf("unexpected completeness report: %#v", report) }
 }
+
+func TestGetNamespaceResourceForbiddenIsNonBlocking(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/api/v1/namespaces/dev-cms" {
+			t.Fatalf("unexpected path: %s", r.URL.Path)
+		}
+		w.WriteHeader(http.StatusForbidden)
+	}))
+	defer server.Close()
+
+	source := NewKubernetesNamespaceSource(server.URL, "token", "", []string{"dev-cms"}, server.Client())
+	snapshot, warning, err := NewResourceDiscoveryScanner(source).getNamespaceResource(context.Background(), "dev-cms")
+	if err != nil {
+		t.Fatalf("get namespace resource failed: %v", err)
+	}
+	if snapshot.Name != "" || warning != "" {
+		t.Fatalf("forbidden namespace metadata must be non-blocking, snapshot=%#v warning=%q", snapshot, warning)
+	}
+}

@@ -257,8 +257,11 @@ func (s *ResourceDiscoveryScanner) getNamespaceResource(ctx context.Context, nam
 	defer func() { _ = resp.Body.Close() }()
 	switch resp.StatusCode {
 	case http.StatusForbidden:
-		body, _ := io.ReadAll(io.LimitReader(resp.Body, 4096))
-		return domain.ResourceSnapshot{}, fmt.Sprintf("%s Namespace: forbidden (%s)", namespace, strings.TrimSpace(string(body))), nil
+		// Namespace selection is already authorized by the inventory flow. A
+		// namespace-scoped Agent may list the selected namespace names without
+		// being allowed to GET Namespace objects, so missing metadata must not
+		// make the selected workload inventory incomplete.
+		return domain.ResourceSnapshot{}, "", nil
 	case http.StatusNotFound:
 		return domain.ResourceSnapshot{}, "", nil
 	}
