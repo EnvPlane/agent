@@ -37,7 +37,7 @@ func PlanStatefulMaterialization(input StatefulMaterializationInput, policies []
 			return domain.StatefulExecutionPlan{}, fmt.Errorf("source namespace %q is not allowlisted for %s", policy.SourceNamespace, policy.ID)
 		}
 		if policy.Kind == "Secret" && policy.Strategy == domain.StatefulStrategyDatabaseRestore {
-			return domain.StatefulExecutionPlan{}, fmt.Errorf("Secret %s cannot use a database strategy", policy.ID)
+			return domain.StatefulExecutionPlan{}, fmt.Errorf("secret %s cannot use a database strategy", policy.ID)
 		}
 	}
 	return domain.CompileStatefulExecutionPlan(input.TenantID, input.ProjectID, input.EnvironmentID, input.TemplateRevisionID, input.TemplateDigest, input.TargetNamespace, policies, input.InputDigest, now)
