@@ -141,6 +141,30 @@ func TestKubernetesNamespaceSourceInventoryOnlyDoesNotWatchNamespaces(t *testing
 	}
 }
 
+func TestKubernetesNamespaceSourceInventoryIncludesUnselectedNamespaces(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/api/v1/namespaces" {
+			http.NotFound(w, r)
+			return
+		}
+		if r.URL.Query().Get("limit") != "500" {
+			t.Fatalf("namespace inventory limit = %q", r.URL.Query().Get("limit"))
+		}
+		_, _ = w.Write([]byte(`{"items":[{"metadata":{"name":"selected"}},{"metadata":{"name":"other"}}]}`))
+	}))
+	defer server.Close()
+
+	source := NewKubernetesNamespaceSource(server.URL, "kube-token", "", []string{"selected"}, server.Client())
+	source.namespaceInventoryOnly = true
+	items, _, err := source.ListNamespaceInventory(context.Background())
+	if err != nil {
+		t.Fatalf("list namespace inventory: %v", err)
+	}
+	if got := []string{items[0].Metadata.Name, items[1].Metadata.Name}; !reflect.DeepEqual(got, []string{"selected", "other"}) {
+		t.Fatalf("namespace inventory = %#v", got)
+	}
+}
+
 func TestKubernetesNamespaceSourceListsDeploymentsPodsAndIngresses(t *testing.T) {
 	var paths []string
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {

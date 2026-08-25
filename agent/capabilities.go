@@ -48,7 +48,14 @@ func (s *KubernetesNamespaceSource) DiscoverCapabilities(ctx context.Context) (C
 			capabilities[capability] = struct{}{}
 		}
 	}
-	namespaces, excludedNamespaces, err := s.listNamespaces(ctx)
+	var namespaces []Namespace
+	var excludedNamespaces []string
+	var err error
+	if s.namespaceInventoryOnly {
+		namespaces, excludedNamespaces, err = s.ListNamespaceInventory(ctx)
+	} else {
+		namespaces, excludedNamespaces, err = s.listNamespaces(ctx)
+	}
 	if err != nil {
 		report.PermissionWarnings = append(report.PermissionWarnings, fmt.Sprintf("list namespaces failed: %v", err))
 	} else {

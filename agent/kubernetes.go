@@ -398,6 +398,26 @@ func (s *KubernetesNamespaceSource) ListNamespaces(ctx context.Context) ([]Names
 	return items, err
 }
 
+// ListNamespaceInventory returns every non-excluded namespace visible to the
+// Agent. It is used only for Bootstrap's selection UI; workload discovery
+// continues to use ListNamespaces and its explicit namespace allowlist.
+func (s *KubernetesNamespaceSource) ListNamespaceInventory(ctx context.Context) ([]Namespace, []string, error) {
+	items, excluded, err := s.listNamespaces(ctx)
+	if err != nil {
+		return nil, nil, err
+	}
+	if len(s.allowed) == 0 {
+		return items, excluded, nil
+	}
+
+	// Inventory-only project Agents have cluster-scoped Namespace list access.
+	// Re-read without the workload allowlist so Bootstrap can offer all
+	// selectable namespaces before the user makes an explicit choice.
+	clone := *s
+	clone.allowed = nil
+	return clone.listNamespaces(ctx)
+}
+
 func (s *KubernetesNamespaceSource) listNamespaces(ctx context.Context) ([]Namespace, []string, error) {
 	items := make([]Namespace, 0)
 	excluded := make([]string, 0)
