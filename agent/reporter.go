@@ -221,7 +221,10 @@ func (r *HTTPStatusReporter) RegisterAgent(ctx context.Context, cfg Config, capa
 		ObservedAt:               observedAt,
 	}
 	var response domain.AgentRegistrationResponse
-	if err := r.postJSONDecode(ctx, "/api/v1/agents/register", payload, "register agent", &response); err != nil {
+	// Registration is authenticated by the one-time registration token in the
+	// payload. Never forward a persisted runtime Bearer here: recovery after a
+	// stale token must be able to obtain a fresh runtime identity.
+	if err := r.postJSONDecodeWithBearer(ctx, "/api/v1/agents/register", payload, "register agent", &response, ""); err != nil {
 		return "", err
 	}
 	return strings.TrimSpace(response.AgentAuthToken), nil

@@ -203,6 +203,9 @@ func TestHTTPStatusReporterRegistersAgentAndSendsHeartbeat(t *testing.T) {
 		paths = append(paths, r.URL.Path)
 		switch r.URL.Path {
 		case "/api/v1/agents/register":
+			if got := r.Header.Get("Authorization"); got != "" {
+				t.Fatalf("registration must not forward runtime authorization header: %q", got)
+			}
 			if err := json.NewDecoder(r.Body).Decode(&register); err != nil {
 				t.Fatalf("decode register: %v", err)
 			}
