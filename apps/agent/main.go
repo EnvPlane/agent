@@ -267,11 +267,19 @@ func isFixtureIdentityReissuedError(err error) bool {
 
 func isAgentAuthTokenNotIssuedError(err error) bool {
 	var apiErr *clusteragent.APIError
-	if err == nil || !errors.As(err, &apiErr) {
+	if err == nil {
 		return false
 	}
-	message := strings.ToLower(apiErr.Message)
-	return apiErr.Status == 401 && strings.Contains(message, "auth token is not issued")
+	if errors.As(err, &apiErr) {
+		message := strings.ToLower(apiErr.Message)
+		if apiErr.Status == 401 && strings.Contains(message, "auth token is not issued") {
+			return true
+		}
+	}
+	// Older control-plane responses use a plain JSON error envelope without a
+	// machine-readable code. Preserve recovery for those responses too.
+	message := strings.ToLower(err.Error())
+	return strings.Contains(message, "status=401") && strings.Contains(message, "auth token is not issued")
 }
 
 func runResourceScanTick(ctx context.Context, cfg clusteragent.Config, reporter *clusteragent.HTTPStatusReporter, source *clusteragent.KubernetesNamespaceSource, logger *slog.Logger) error {
