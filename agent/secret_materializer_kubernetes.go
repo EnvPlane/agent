@@ -27,7 +27,7 @@ func (s *KubernetesNamespaceSource) GetSecret(ctx context.Context, namespace, na
 	if err != nil {
 		return SecretRecord{}, fmt.Errorf("read approved Secret %s/%s: %w", namespace, name, err)
 	}
-	defer response.Body.Close()
+	defer func() { _ = response.Body.Close() }()
 	body, err := io.ReadAll(io.LimitReader(response.Body, 2<<20))
 	if err != nil {
 		return SecretRecord{}, fmt.Errorf("read approved Secret %s/%s: %w", namespace, name, err)
@@ -87,7 +87,7 @@ func (s *KubernetesNamespaceSource) DeleteSecret(ctx context.Context, namespace,
 	if err != nil {
 		return err
 	}
-	defer response.Body.Close()
+	defer func() { _ = response.Body.Close() }()
 	if response.StatusCode == http.StatusNotFound {
 		return ErrSecretNotFound
 	}
@@ -127,7 +127,7 @@ func (s *KubernetesNamespaceSource) applyResource(ctx context.Context, resourceP
 	if err != nil {
 		return err
 	}
-	defer response.Body.Close()
+	defer func() { _ = response.Body.Close() }()
 	if response.StatusCode >= 200 && response.StatusCode < 300 {
 		return nil
 	}

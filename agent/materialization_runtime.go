@@ -27,7 +27,7 @@ func (r *HTTPStatusReporter) FetchSecretMaterializationCommand(ctx context.Conte
 	if err != nil {
 		return nil, err
 	}
-	defer response.Body.Close()
+	defer func() { _ = response.Body.Close() }()
 	if response.StatusCode == http.StatusNoContent {
 		return nil, nil
 	}
@@ -88,7 +88,9 @@ func runSecretMaterializationCommandOnce(ctx context.Context, cfg Config, report
 	} else {
 		var runtimeResults []MaterializationResult
 		runtimeResults, err = materializer.Execute(ctx, runtimeCommand)
-		result.Items, err = materializationWireResults(command.Plan, runtimeResults, result.FinishedAt)
+		if err == nil {
+			result.Items, err = materializationWireResults(command.Plan, runtimeResults, result.FinishedAt)
+		}
 	}
 	if err != nil {
 		result.Status = domain.SecretCommandFailed

@@ -19,10 +19,10 @@ func TestSecretMaterializationRuntimeClaimsExecutesAndReportsWithAgentAuth(t *te
 		if r.Header.Get("Authorization") != "Bearer runtime-token" {
 			t.Fatalf("authorization = %q", r.Header.Get("Authorization"))
 		}
-		switch {
-		case r.Method == http.MethodGet:
+		switch r.Method {
+		case http.MethodGet:
 			_ = json.NewEncoder(w).Encode(command)
-		case r.Method == http.MethodPost:
+		case http.MethodPost:
 			if err := json.NewDecoder(r.Body).Decode(&reported); err != nil {
 				t.Fatal(err)
 			}
