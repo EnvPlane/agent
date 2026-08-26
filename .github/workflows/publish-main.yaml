@@ -122,10 +122,14 @@ jobs:
           COMPONENT: agent
           REPOSITORY: ghcr.io/envplane/agent
           TAG: sha-${{ github.sha }}
-          DIGEST: ${{ steps.build.outputs.digest }}
         run: |
           set -euo pipefail
-          test -n "$DIGEST"
+          reference="$REPOSITORY:$TAG"
+          DIGEST="$(docker buildx imagetools inspect "$reference" | awk '$1 == "Digest:" {print $2; exit}')"
+          [[ "$DIGEST" =~ ^sha256:[0-9a-f]{64}$ ]] || {
+            echo "failed to resolve final immutable tag digest for $reference" >&2
+            exit 1
+          }
           metadata="$(jq -cn \
             --arg component "$COMPONENT" \
             --arg repository "$REPOSITORY" \
