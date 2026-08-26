@@ -218,7 +218,7 @@ func runHeartbeat(ctx context.Context, cfg clusteragent.Config, reporter *cluste
 			}
 			if err := reporter.ReportHeartbeatWithEndpointPreflight(tickCtx, cfg, capabilities, status, statusErr, preflight); err != nil {
 				cancel()
-				if (isFixtureIdentityReissuedError(err) || isAgentAuthTokenNotIssuedError(err)) && strings.TrimSpace(bootstrapRegistrationToken) != "" {
+				if (isFixtureIdentityReissuedError(err) || isSameClusterIdentityReissuedError(err) || isAgentAuthTokenNotIssuedError(err)) && strings.TrimSpace(bootstrapRegistrationToken) != "" {
 					recoveryCtx, recoveryCancel := context.WithTimeout(ctx, 2*cfg.ReportTimeout)
 					// The control plane re-opened the explicit E2E fixture's hashed
 					// registration claim, or rejected a stale runtime token. Drop only
@@ -263,6 +263,11 @@ func runHeartbeat(ctx context.Context, cfg clusteragent.Config, reporter *cluste
 func isFixtureIdentityReissuedError(err error) bool {
 	var apiErr *clusteragent.APIError
 	return err != nil && errors.As(err, &apiErr) && apiErr.Code == "fixture_identity_reissued"
+}
+
+func isSameClusterIdentityReissuedError(err error) bool {
+	var apiErr *clusteragent.APIError
+	return err != nil && errors.As(err, &apiErr) && apiErr.Code == "same_cluster_identity_reissued"
 }
 
 func isAgentAuthTokenNotIssuedError(err error) bool {
