@@ -13,7 +13,7 @@ import (
 
 func TestSecretMaterializationRuntimeClaimsExecutesAndReportsWithAgentAuth(t *testing.T) {
 	plan := materializerPlan(t, []domain.SecretStrategyConfig{{ID: "clone", Strategy: domain.SecretStrategyEncryptedClone, SourceNamespace: "base", SourceName: "source", TargetNamespace: "target", TargetName: "clone", EncryptedPayloadRef: "envelopes/clone"}})
-	command := domain.AgentSecretMaterializationCommand{ContractVersion: domain.SecretMaterializationCommandContractVersion, CommandID: "command", TenantID: plan.TenantID, ProjectID: plan.ProjectID, EnvironmentID: plan.EnvironmentID, ClusterID: "cluster", AgentID: "agent", Operation: domain.SecretOperationMaterialize, PlanID: plan.PlanID, PlanDigest: plan.Digest, ExpectedRevision: plan.Revision, Plan: plan, Status: domain.SecretCommandClaimed, Attempt: 1, AttemptID: "attempt", CreatedAt: time.Unix(2, 0)}
+	command := domain.AgentSecretMaterializationCommand{ContractVersion: domain.SecretMaterializationCommandContractVersion, CommandID: "command", TenantID: plan.TenantID, ProjectID: plan.ProjectID, EnvironmentID: plan.EnvironmentID, ClusterID: "cluster", AgentID: "agent", Operation: domain.SecretOperationMaterialize, PlanID: plan.PlanID, PlanDigest: plan.Digest, ExpectedRevision: plan.Revision, Plan: plan, Status: domain.SecretCommandClaimed, Attempt: 1, AttemptID: "attempt", CreatedAt: time.Unix(2, 0), EnvelopeLeases: map[string]domain.SecretMaterializationEnvelopeLease{"clone": {LeaseID: "lease", EnvelopeDigest: "sha256:digest", Audience: "agent", ExpiresAt: time.Now().UTC().Add(time.Hour)}}}
 	var reported domain.AgentSecretMaterializationResult
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.Header.Get("Authorization") != "Bearer runtime-token" {
@@ -52,6 +52,15 @@ func TestSecretMaterializationRuntimeClaimsExecutesAndReportsWithAgentAuth(t *te
 	}
 	if reported.Items[0].IdempotencyKey != wantKey {
 		t.Fatalf("result idempotency key=%q, want shared-contract key %q", reported.Items[0].IdempotencyKey, wantKey)
+	}
+}
+
+func TestSecretMaterializationRuntimeRejectsExpiredEnvelopeLease(t *testing.T) {
+	plan := materializerPlan(t, []domain.SecretStrategyConfig{{ID: "clone", Strategy: domain.SecretStrategyEncryptedClone, SourceNamespace: "base", SourceName: "source", TargetNamespace: "target", TargetName: "clone", EncryptedPayloadRef: "envelopes/clone"}})
+	now := time.Now().UTC()
+	command := domain.AgentSecretMaterializationCommand{ContractVersion: domain.SecretMaterializationCommandContractVersion, AgentID: "agent", Operation: domain.SecretOperationMaterialize, Plan: plan, EnvelopeLeases: map[string]domain.SecretMaterializationEnvelopeLease{"clone": {LeaseID: "lease", EnvelopeDigest: "sha256:digest", Audience: "agent", ExpiresAt: now}}}
+	if err := validateSecretMaterializationEnvelopeLeases(command, now); err == nil {
+		t.Fatal("expired envelope lease was accepted")
 	}
 }
 

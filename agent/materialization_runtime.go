@@ -77,6 +77,11 @@ func runSecretMaterializationCommandOnce(ctx context.Context, cfg Config, report
 		return err
 	}
 	result := domain.AgentSecretMaterializationResult{ContractVersion: domain.SecretMaterializationCommandContractVersion, CommandID: command.CommandID, AttemptID: command.AttemptID, TenantID: command.TenantID, ProjectID: command.ProjectID, EnvironmentID: command.EnvironmentID, ClusterID: command.ClusterID, AgentID: command.AgentID, PlanID: command.PlanID, PlanDigest: command.PlanDigest, ExpectedRevision: command.ExpectedRevision, Status: domain.SecretCommandSucceeded, FinishedAt: time.Now().UTC()}
+	if err := validateSecretMaterializationEnvelopeLeases(*command, result.FinishedAt); err != nil {
+		result.Status = domain.SecretCommandFailed
+		result.ErrorCode = domain.SecretErrorValidationFailed
+		return reporter.ReportSecretMaterializationResult(ctx, cfg, result)
+	}
 	runtimeCommand := MaterializationCommand{TenantID: command.TenantID, PlanID: command.PlanID, PlanDigest: command.PlanDigest, Audience: command.AgentID, Plan: command.Plan}
 	if command.Operation == domain.SecretOperationCleanup {
 		err = materializer.Cleanup(ctx, runtimeCommand)
@@ -94,6 +99,25 @@ func runSecretMaterializationCommandOnce(ctx context.Context, cfg Config, report
 	}
 	if logger != nil {
 		logger.Info("secret materialization command completed", "command_id", command.CommandID, "plan_id", command.PlanID, "status", result.Status, "error_code", result.ErrorCode)
+	}
+	return nil
+}
+
+func validateSecretMaterializationEnvelopeLeases(command domain.AgentSecretMaterializationCommand, now time.Time) error {
+	if command.ContractVersion == domain.SecretMaterializationCommandContractVersionV1 || command.Operation == domain.SecretOperationCleanup {
+		return nil
+	}
+	for _, item := range command.Plan.Items {
+		if item.Strategy != domain.SecretStrategyEncryptedClone {
+			continue
+		}
+		lease, ok := command.EnvelopeLeases[item.ID]
+		if !ok {
+			return errors.New("encrypted clone envelope lease is missing")
+		}
+		if err := lease.Validate(command.AgentID, now); err != nil {
+			return err
+		}
 	}
 	return nil
 }
