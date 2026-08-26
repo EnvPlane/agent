@@ -1,7 +1,9 @@
 package agent
 
 import (
+	"bytes"
 	"context"
+	"encoding/json"
 	"errors"
 	"testing"
 	"time"
@@ -119,5 +121,74 @@ func TestSecretMaterializerCleanupDeletesOnlyOwnedSecrets(t *testing.T) {
 	}
 	if len(fake.deletes) != 1 || fake.deletes[0] != "target/owned" {
 		t.Fatalf("unexpected deletes: %#v", fake.deletes)
+	}
+}
+
+// TestSecretMaterializationReleaseGate keeps the executor part of the
+// private-registry lifecycle in one regression scenario. Test bytes are
+// deliberately opaque and are never logged or embedded in commands/results.
+func TestSecretMaterializationReleaseGate(t *testing.T) {
+	plan := materializerPlan(t, []domain.SecretStrategyConfig{
+		{ID: "registry", Strategy: domain.SecretStrategyEncryptedClone, SourceNamespace: "base", SourceName: "registry", TargetNamespace: "target", TargetName: "registry", EncryptedPayloadRef: "envelopes/registry"},
+		{ID: "application", Strategy: domain.SecretStrategyReference, SourceNamespace: "base", SourceName: "application", TargetNamespace: "target", TargetName: "application"},
+	})
+	sourceData := []byte{0x31, 0x95, 0x02, 0xab}
+	fake := &materializerFake{secrets: map[string]SecretRecord{
+		"base/registry":    {Type: "kubernetes.io/dockerconfigjson", Data: map[string][]byte{".dockerconfigjson": append([]byte(nil), sourceData...)}},
+		"base/application": {Type: "Opaque", Data: map[string][]byte{"config": {0x7f}}},
+	}}
+	command := MaterializationCommand{TenantID: "tenant", PlanID: plan.PlanID, PlanDigest: plan.Digest, Audience: "runner", Plan: plan}
+	encoded, err := json.Marshal(command)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if bytes.Contains(encoded, sourceData) {
+		t.Fatal("materialization command serialized source Secret bytes")
+	}
+
+	materializer, err := NewSecretMaterializer(fake, nil, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	results, err := materializer.Execute(context.Background(), command)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(results) != 2 || results[0].Status != "ready" || results[1].Status != "ready" {
+		t.Fatalf("unexpected materialization results: %#v", results)
+	}
+	target, err := fake.GetSecret(context.Background(), "target", "registry")
+	if err != nil {
+		t.Fatalf("materialized registry Secret missing: %v", err)
+	}
+	if !bytes.Equal(target.Data[".dockerconfigjson"], sourceData) {
+		t.Fatal("materialized registry Secret differs from approved source")
+	}
+
+	// A fresh executor can safely resume the immutable command.
+	restarted, err := NewSecretMaterializer(fake, nil, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := restarted.Execute(context.Background(), command); err != nil {
+		t.Fatalf("executor restart could not resume materialization: %v", err)
+	}
+
+	// The target may not be replaced after ownership changes.
+	fake.secrets["target/registry"] = SecretRecord{Type: "Opaque", Labels: map[string]string{"app.kubernetes.io/managed-by": "foreign"}}
+	if _, err := restarted.Execute(context.Background(), command); !errors.Is(err, ErrForeignSecret) {
+		t.Fatalf("foreign target replacement error = %v", err)
+	}
+
+	// Restore the two-factor ownership guard and verify close/delete cleanup.
+	fake.secrets["target/registry"] = target
+	if err := restarted.Cleanup(context.Background(), command); err != nil {
+		t.Fatalf("cleanup materialized registry Secret: %v", err)
+	}
+	if _, err := fake.GetSecret(context.Background(), "target", "registry"); !errors.Is(err, ErrSecretNotFound) {
+		t.Fatalf("owned registry Secret remained after cleanup: %v", err)
+	}
+	if _, err := fake.GetSecret(context.Background(), "base", "application"); err != nil {
+		t.Fatalf("reference Secret was deleted during cleanup: %v", err)
 	}
 }
