@@ -99,23 +99,37 @@ func (w *NamespaceWatcher) Run(ctx context.Context) error {
 		if ctx.Err() != nil {
 			return nil
 		}
-		err := w.source.WatchNamespaces(ctx, func(event NamespaceEvent) error {
-			return w.reportEvent(ctx, event.Type, event.Namespace)
-		})
-		if ctx.Err() != nil {
-			return nil
-		}
-		if err != nil {
-			w.logger.Error("namespace watch failed", "error", err)
-		}
 
-		timer := time.NewTimer(w.resyncInterval)
-		select {
-		case <-ctx.Done():
-			timer.Stop()
-			return nil
-		case <-timer.C:
+		watchDone := make(chan error, 1)
+		go func() {
+			watchDone <- w.source.WatchNamespaces(ctx, func(event NamespaceEvent) error {
+				return w.reportEvent(ctx, event.Type, event.Namespace)
+			})
+		}()
+
+		ticker := time.NewTicker(w.resyncInterval)
+		watchActive := true
+		for watchActive {
+			select {
+			case <-ctx.Done():
+				ticker.Stop()
+				return nil
+			case <-ticker.C:
+				if err := w.SyncOnce(ctx); err != nil && ctx.Err() == nil {
+					w.logger.Error("namespace sync failed", "error", err)
+				}
+			case err := <-watchDone:
+				watchActive = false
+				if ctx.Err() != nil {
+					ticker.Stop()
+					return nil
+				}
+				if err != nil {
+					w.logger.Error("namespace watch failed", "error", err)
+				}
+			}
 		}
+		ticker.Stop()
 	}
 }
 

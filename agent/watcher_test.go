@@ -6,6 +6,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -262,8 +263,79 @@ func TestNamespaceWatcherReportsFluxStatus(t *testing.T) {
 	}
 }
 
+func TestNamespaceWatcherResyncsWhileNamespaceWatchIsActive(t *testing.T) {
+	source := &blockingNamespaceSource{
+		namespaces: []Namespace{{
+			Metadata: NamespaceMetadata{
+				Name:   "envplane-pr-resync",
+				Labels: map[string]string{environmentIDLabel: "resync"},
+			},
+			Status: NamespaceStatus{Phase: "Active"},
+		}},
+	}
+	reporter := &channelStatusReporter{reports: make(chan NamespaceStatusReport, 3)}
+	watcher := NewNamespaceWatcher(source, reporter, 10*time.Millisecond, nil)
+	ctx, cancel := context.WithCancel(context.Background())
+	done := make(chan error, 1)
+	go func() { done <- watcher.Run(ctx) }()
+
+	for i := 0; i < 2; i++ {
+		select {
+		case report := <-reporter.reports:
+			if report.EnvironmentID != "resync" {
+				t.Fatalf("environment id = %q", report.EnvironmentID)
+			}
+		case <-time.After(time.Second):
+			t.Fatalf("did not receive resync report %d while watch remained active", i+1)
+		}
+	}
+
+	cancel()
+	select {
+	case err := <-done:
+		if err != nil {
+			t.Fatalf("watcher run: %v", err)
+		}
+	case <-time.After(time.Second):
+		t.Fatal("watcher did not stop after context cancellation")
+	}
+}
+
 type fakeNamespaceSource struct {
 	namespaces []Namespace
+}
+
+type blockingNamespaceSource struct {
+	namespaces []Namespace
+	mu         sync.Mutex
+}
+
+func (f *blockingNamespaceSource) ListNamespaces(context.Context) ([]Namespace, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	return append([]Namespace(nil), f.namespaces...), nil
+}
+
+func (f *blockingNamespaceSource) WatchNamespaces(ctx context.Context, _ func(NamespaceEvent) error) error {
+	<-ctx.Done()
+	return nil
+}
+
+type channelStatusReporter struct {
+	reports chan NamespaceStatusReport
+}
+
+func (r *channelStatusReporter) ReportNamespaceStatus(_ context.Context, report NamespaceStatusReport) error {
+	r.reports <- report
+	return nil
+}
+
+func (r *channelStatusReporter) ReportEvents(context.Context, string, []domain.KubernetesEvent) error {
+	return nil
+}
+
+func (r *channelStatusReporter) ReportFluxStatus(context.Context, string, domain.FluxStatus) error {
+	return nil
 }
 
 func (f *fakeNamespaceSource) ListNamespaces(context.Context) ([]Namespace, error) {
