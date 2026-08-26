@@ -20,3 +20,10 @@ func TestIsAgentAuthTokenNotIssuedErrorRecognizesAPIError(t *testing.T) {
 		t.Fatal("expected API error to trigger runtime auth recovery")
 	}
 }
+
+func TestIsAgentAuthTokenNotIssuedErrorRecognizesInvalidAPIToken(t *testing.T) {
+	err := errors.New(`report heartbeat failed: status=401 body={"error":"invalid api token"}`)
+	if !isAgentAuthTokenNotIssuedError(err) {
+		t.Fatal("expected invalid API token response to trigger runtime auth recovery")
+	}
+}

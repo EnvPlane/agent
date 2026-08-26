@@ -272,14 +272,18 @@ func isAgentAuthTokenNotIssuedError(err error) bool {
 	}
 	if errors.As(err, &apiErr) {
 		message := strings.ToLower(apiErr.Message)
-		if apiErr.Status == 401 && strings.Contains(message, "auth token is not issued") {
+		if apiErr.Status == 401 && isStaleAgentAuthTokenMessage(message) {
 			return true
 		}
 	}
 	// Older control-plane responses use a plain JSON error envelope without a
 	// machine-readable code. Preserve recovery for those responses too.
 	message := strings.ToLower(err.Error())
-	return strings.Contains(message, "status=401") && strings.Contains(message, "auth token is not issued")
+	return strings.Contains(message, "status=401") && isStaleAgentAuthTokenMessage(message)
+}
+
+func isStaleAgentAuthTokenMessage(message string) bool {
+	return strings.Contains(message, "auth token is not issued") || strings.Contains(message, "invalid api token")
 }
 
 func runResourceScanTick(ctx context.Context, cfg clusteragent.Config, reporter *clusteragent.HTTPStatusReporter, source *clusteragent.KubernetesNamespaceSource, logger *slog.Logger) error {
