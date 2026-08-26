@@ -47,3 +47,17 @@ func TestSecretMaterializationRuntimeClaimsExecutesAndReportsWithAgentAuth(t *te
 		t.Fatalf("reported result = %#v", reported)
 	}
 }
+
+func TestMaterializationWireItemErrorCodeIsCanonical(t *testing.T) {
+	tests := map[string]domain.SecretMaterializationErrorCode{
+		"foreign_secret":     domain.SecretErrorConflict,
+		"unsafe_secret_type": domain.SecretErrorValidationFailed,
+		"source_not_found":   domain.SecretErrorSourceNotFound,
+		"unexpected":         domain.SecretErrorBackendUnavailable,
+	}
+	for input, want := range tests {
+		if got := materializationWireItemErrorCode(input); got != want {
+			t.Fatalf("materializationWireItemErrorCode(%q) = %q, want %q", input, got, want)
+		}
+	}
+}

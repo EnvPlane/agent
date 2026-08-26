@@ -110,9 +110,28 @@ func materializationWireResults(plan domain.SecretMaterializationPlan, results [
 		if result.Status != "ready" {
 			state = domain.SecretItemFailed
 		}
-		wire = append(wire, domain.SecretMaterializationItemResult{ItemID: result.ItemID, Strategy: item.Strategy, TargetNamespace: item.TargetNamespace, TargetName: item.TargetName, Operation: domain.SecretOperationMaterialize, IdempotencyKey: materializationIdempotencyKey(MaterializationCommand{TenantID: plan.TenantID, PlanID: plan.PlanID, PlanDigest: plan.Digest}, item.ID), InputDigest: plan.InputDigest, Status: state, ErrorCode: domain.SecretMaterializationErrorCode(result.ErrorCode), Attempt: 1, StartedAt: finished, FinishedAt: finished})
+		wire = append(wire, domain.SecretMaterializationItemResult{ItemID: result.ItemID, Strategy: item.Strategy, TargetNamespace: item.TargetNamespace, TargetName: item.TargetName, Operation: domain.SecretOperationMaterialize, IdempotencyKey: materializationIdempotencyKey(MaterializationCommand{TenantID: plan.TenantID, PlanID: plan.PlanID, PlanDigest: plan.Digest}, item.ID), InputDigest: plan.InputDigest, Status: state, ErrorCode: materializationWireItemErrorCode(result.ErrorCode), Attempt: 1, StartedAt: finished, FinishedAt: finished})
 	}
 	return wire
+}
+
+func materializationWireItemErrorCode(code string) domain.SecretMaterializationErrorCode {
+	switch strings.TrimSpace(code) {
+	case "":
+		return ""
+	case "foreign_secret", "conflict":
+		return domain.SecretErrorConflict
+	case "source_not_found":
+		return domain.SecretErrorSourceNotFound
+	case "permission_denied":
+		return domain.SecretErrorPermissionDenied
+	case "unsafe_secret_type", "invalid_binding", "validation_failed":
+		return domain.SecretErrorValidationFailed
+	case "timeout":
+		return domain.SecretErrorTimeout
+	default:
+		return domain.SecretErrorBackendUnavailable
+	}
 }
 
 func materializationWireErrorCode(err error) domain.SecretMaterializationErrorCode {
