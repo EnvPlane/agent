@@ -56,6 +56,7 @@ type SecretMaterializerClient interface {
 	GetSecret(context.Context, string, string) (SecretRecord, error)
 	ApplySecret(context.Context, SecretApply) error
 	ApplyExternal(context.Context, SecretApply) error
+	DeleteSecret(context.Context, string, string) error
 }
 
 type SecretSensitiveResolver interface {
@@ -106,6 +107,46 @@ func (m *SecretMaterializer) Execute(ctx context.Context, command Materializatio
 		results = append(results, result)
 	}
 	return results, nil
+}
+
+// Cleanup deletes only plan-owned Secrets. Ownership and the plan digest are
+// both required, so a forged/stale plan cannot remove a foreign Secret.
+func (m *SecretMaterializer) Cleanup(ctx context.Context, command MaterializationCommand) error {
+	if command.TenantID == "" || command.PlanID == "" || command.PlanDigest == "" || command.Plan.PlanID != command.PlanID || command.Plan.Digest != command.PlanDigest || command.Plan.TenantID != command.TenantID {
+		return ErrMaterializationPlanMismatch
+	}
+	if err := command.Plan.Validate(); err != nil {
+		return fmt.Errorf("%w: %v", ErrMaterializationPlanMismatch, err)
+	}
+	owned := map[string]domain.SecretMaterializationItem{}
+	for _, item := range command.Plan.Items {
+		if item.Strategy == domain.SecretStrategyEncryptedClone || item.Strategy == domain.SecretStrategyManual || item.Strategy == domain.SecretStrategyGenerated {
+			owned[item.TargetNamespace+"\x00"+item.TargetName] = item
+		}
+	}
+	for _, record := range command.Plan.Ownership {
+		if record.Kind != "Secret" {
+			continue
+		}
+		item, ok := owned[record.Namespace+"\x00"+record.Name]
+		if !ok || record.Namespace != command.Plan.TargetNamespace {
+			continue
+		}
+		existing, err := m.client.GetSecret(ctx, record.Namespace, record.Name)
+		if errors.Is(err, ErrSecretNotFound) {
+			continue
+		}
+		if err != nil {
+			return err
+		}
+		if existing.Labels["app.kubernetes.io/managed-by"] != "envplane" || existing.Annotations["envplane.io/secret-plan-digest"] != command.PlanDigest || item.TargetName != record.Name {
+			return ErrForeignSecret
+		}
+		if err := m.client.DeleteSecret(ctx, record.Namespace, record.Name); err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 func (m *SecretMaterializer) executeItem(ctx context.Context, command MaterializationCommand, item domain.SecretMaterializationItem) error {

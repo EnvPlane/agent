@@ -13,6 +13,13 @@ type materializerFake struct {
 	secrets  map[string]SecretRecord
 	applies  []SecretApply
 	external []SecretApply
+	deletes  []string
+}
+
+func (f *materializerFake) DeleteSecret(_ context.Context, namespace, name string) error {
+	f.deletes = append(f.deletes, namespace+"/"+name)
+	delete(f.secrets, namespace+"/"+name)
+	return nil
 }
 
 func (f *materializerFake) GetSecret(_ context.Context, namespace, name string) (SecretRecord, error) {
@@ -97,5 +104,20 @@ func TestSecretMaterializerRejectsForeignAndUnsafeSecretsAndPlanSubstitution(t *
 	_, err = materializer.Execute(context.Background(), MaterializationCommand{TenantID: "tenant", PlanID: plan.PlanID, PlanDigest: plan.Digest, Audience: "runner", Plan: plan})
 	if !errors.Is(err, ErrUnsafeSecretType) {
 		t.Fatalf("unsafe type error = %v", err)
+	}
+}
+
+func TestSecretMaterializerCleanupDeletesOnlyOwnedSecrets(t *testing.T) {
+	plan := materializerPlan(t, []domain.SecretStrategyConfig{
+		{ID: "owned", Strategy: domain.SecretStrategyGenerated, TargetNamespace: "target", TargetName: "owned", Generator: "password", CredentialRotation: "on_create"},
+		{ID: "ref", Strategy: domain.SecretStrategyReference, SourceNamespace: "shared", SourceName: "ref", TargetNamespace: "target", TargetName: "ref"},
+	})
+	fake := &materializerFake{secrets: map[string]SecretRecord{"target/owned": {Labels: map[string]string{"app.kubernetes.io/managed-by": "envplane"}, Annotations: map[string]string{"envplane.io/secret-plan-digest": plan.Digest}}}}
+	m, _ := NewSecretMaterializer(fake, nil, nil)
+	if err := m.Cleanup(context.Background(), MaterializationCommand{TenantID: "tenant", PlanID: plan.PlanID, PlanDigest: plan.Digest, Audience: "runner", Plan: plan}); err != nil {
+		t.Fatal(err)
+	}
+	if len(fake.deletes) != 1 || fake.deletes[0] != "target/owned" {
+		t.Fatalf("unexpected deletes: %#v", fake.deletes)
 	}
 }

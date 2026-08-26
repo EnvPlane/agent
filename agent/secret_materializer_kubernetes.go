@@ -70,6 +70,33 @@ func (s *KubernetesNamespaceSource) ApplyExternal(ctx context.Context, apply Sec
 	return s.applyResource(ctx, "/apis/external-secrets.io/v1beta1/namespaces/"+url.PathEscape(apply.Namespace)+"/externalsecrets/"+url.PathEscape(apply.Name), body, apply)
 }
 
+func (s *KubernetesNamespaceSource) DeleteSecret(ctx context.Context, namespace, name string) error {
+	if !s.allowedNamespace(namespace) || strings.TrimSpace(name) == "" || strings.ContainsAny(name, "/\\") {
+		return ErrSecretNotFound
+	}
+	endpoint := strings.TrimRight(s.apiURL, "/") + "/api/v1/namespaces/" + url.PathEscape(namespace) + "/secrets/" + url.PathEscape(name)
+	request, err := http.NewRequestWithContext(ctx, http.MethodDelete, endpoint, nil)
+	if err != nil {
+		return err
+	}
+	request.Header.Set("Accept", "application/json")
+	if s.token != "" {
+		request.Header.Set("Authorization", "Bearer "+s.token)
+	}
+	response, err := s.client.Do(request)
+	if err != nil {
+		return err
+	}
+	defer response.Body.Close()
+	if response.StatusCode == http.StatusNotFound {
+		return ErrSecretNotFound
+	}
+	if response.StatusCode < 200 || response.StatusCode >= 300 {
+		return fmt.Errorf("delete owned Secret %s/%s denied: status=%d", namespace, name, response.StatusCode)
+	}
+	return nil
+}
+
 func (s *KubernetesNamespaceSource) applyResource(ctx context.Context, resourcePath string, body map[string]any, apply SecretApply) error {
 	if strings.TrimSpace(apply.Namespace) == "" || strings.TrimSpace(apply.Name) == "" || strings.TrimSpace(apply.FieldManager) == "" || strings.TrimSpace(apply.IdempotencyKey) == "" {
 		return ErrMaterializationConflict
