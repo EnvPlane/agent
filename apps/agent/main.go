@@ -68,6 +68,12 @@ func runAgent(logger *slog.Logger) {
 	}
 	reporter.SetToken(cfg.AgentAuthToken)
 	go runHeartbeat(ctx, cfg, reporter, source, logger, bootstrapRegistrationToken)
+	materializer, err := clusteragent.NewSecretMaterializer(source, nil, nil)
+	if err != nil {
+		logger.Error("failed to initialise secret materializer", "error", err)
+		os.Exit(1)
+	}
+	go clusteragent.RunSecretMaterializationCommands(ctx, cfg, reporter, materializer, logger)
 
 	logger.Info("envplane agent started", "cluster_id", cfg.ClusterID, "agent_id", cfg.AgentID, "control_plane_url", cfg.ControlPlaneURL)
 	if err := watcher.Run(ctx); err != nil {
