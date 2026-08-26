@@ -18,6 +18,7 @@ var (
 	ErrForeignSecret               = errors.New("existing Secret is not owned by EnvPlane")
 	ErrUnsafeSecretType            = errors.New("unsafe Secret type is not materializable")
 	ErrMaterializationConflict     = errors.New("materialization conflict")
+	ErrSecretNotFound              = errors.New("secret not found")
 )
 
 type MaterializationCommand struct {
@@ -47,6 +48,8 @@ type SecretApply struct {
 	FieldManager   string
 	Force          bool
 	IdempotencyKey string
+	ExternalStore  string
+	ExternalKey    string
 }
 
 type SecretMaterializerClient interface {
@@ -112,7 +115,7 @@ func (m *SecretMaterializer) executeItem(ctx context.Context, command Materializ
 		_, err := m.client.GetSecret(ctx, item.SourceNamespace, item.SourceName)
 		return err
 	case domain.SecretStrategyExternal:
-		return m.client.ApplyExternal(ctx, SecretApply{Namespace: item.TargetNamespace, Name: item.TargetName, Type: "Opaque", Labels: materializerLabels(command, item), Annotations: materializerAnnotations(command, item), FieldManager: secretMaterializerFieldManager, IdempotencyKey: key})
+		return m.client.ApplyExternal(ctx, SecretApply{Namespace: item.TargetNamespace, Name: item.TargetName, Type: "Opaque", ExternalStore: item.ExternalSecretStore, ExternalKey: item.ExternalKey, Labels: materializerLabels(command, item), Annotations: materializerAnnotations(command, item), FieldManager: secretMaterializerFieldManager, IdempotencyKey: key})
 	case domain.SecretStrategyEncryptedClone:
 		source, err := m.client.GetSecret(ctx, item.SourceNamespace, item.SourceName)
 		if err != nil {
@@ -201,6 +204,4 @@ func materializationErrorCode(err error) string {
 	}
 	return "materialization_failed"
 }
-func isSecretNotFound(err error) bool { return errors.Is(err, errSecretNotFound) }
-
-var errSecretNotFound = errors.New("secret not found")
+func isSecretNotFound(err error) bool { return errors.Is(err, ErrSecretNotFound) }

@@ -18,7 +18,7 @@ type materializerFake struct {
 func (f *materializerFake) GetSecret(_ context.Context, namespace, name string) (SecretRecord, error) {
 	value, ok := f.secrets[namespace+"/"+name]
 	if !ok {
-		return SecretRecord{}, errSecretNotFound
+		return SecretRecord{}, ErrSecretNotFound
 	}
 	return value, nil
 }
