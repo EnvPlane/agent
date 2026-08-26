@@ -83,7 +83,7 @@ func runSecretMaterializationCommandOnce(ctx context.Context, cfg Config, report
 	} else {
 		var runtimeResults []MaterializationResult
 		runtimeResults, err = materializer.Execute(ctx, runtimeCommand)
-		result.Items = materializationWireResults(command.Plan, runtimeResults, result.FinishedAt)
+		result.Items, err = materializationWireResults(command.Plan, runtimeResults, result.FinishedAt)
 	}
 	if err != nil {
 		result.Status = domain.SecretCommandFailed
@@ -98,7 +98,7 @@ func runSecretMaterializationCommandOnce(ctx context.Context, cfg Config, report
 	return nil
 }
 
-func materializationWireResults(plan domain.SecretMaterializationPlan, results []MaterializationResult, finished time.Time) []domain.SecretMaterializationItemResult {
+func materializationWireResults(plan domain.SecretMaterializationPlan, results []MaterializationResult, finished time.Time) ([]domain.SecretMaterializationItemResult, error) {
 	items := make(map[string]domain.SecretMaterializationItem, len(plan.Items))
 	for _, item := range plan.Items {
 		items[item.ID] = item
@@ -106,13 +106,17 @@ func materializationWireResults(plan domain.SecretMaterializationPlan, results [
 	wire := make([]domain.SecretMaterializationItemResult, 0, len(results))
 	for _, result := range results {
 		item := items[result.ItemID]
+		key, err := materializationIdempotencyKey(plan, result.ItemID, domain.SecretOperationMaterialize)
+		if err != nil {
+			return nil, err
+		}
 		state := domain.SecretItemReady
 		if result.Status != "ready" {
 			state = domain.SecretItemFailed
 		}
-		wire = append(wire, domain.SecretMaterializationItemResult{ItemID: result.ItemID, Strategy: item.Strategy, TargetNamespace: item.TargetNamespace, TargetName: item.TargetName, Operation: domain.SecretOperationMaterialize, IdempotencyKey: materializationIdempotencyKey(MaterializationCommand{TenantID: plan.TenantID, PlanID: plan.PlanID, PlanDigest: plan.Digest}, item.ID), InputDigest: plan.InputDigest, Status: state, ErrorCode: materializationWireItemErrorCode(result.ErrorCode), Attempt: 1, StartedAt: finished, FinishedAt: finished})
+		wire = append(wire, domain.SecretMaterializationItemResult{ItemID: result.ItemID, Strategy: item.Strategy, TargetNamespace: item.TargetNamespace, TargetName: item.TargetName, Operation: domain.SecretOperationMaterialize, IdempotencyKey: key, InputDigest: plan.InputDigest, Status: state, ErrorCode: materializationWireItemErrorCode(result.ErrorCode), Attempt: 1, StartedAt: finished, FinishedAt: finished})
 	}
-	return wire
+	return wire, nil
 }
 
 func materializationWireItemErrorCode(code string) domain.SecretMaterializationErrorCode {

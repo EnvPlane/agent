@@ -150,7 +150,10 @@ func (m *SecretMaterializer) Cleanup(ctx context.Context, command Materializatio
 }
 
 func (m *SecretMaterializer) executeItem(ctx context.Context, command MaterializationCommand, item domain.SecretMaterializationItem) error {
-	key := materializationIdempotencyKey(command, item.ID)
+	key, err := materializationIdempotencyKey(command.Plan, item.ID, domain.SecretOperationMaterialize)
+	if err != nil {
+		return fmt.Errorf("materialization idempotency binding: %w", err)
+	}
 	switch item.Strategy {
 	case domain.SecretStrategyReference:
 		_, err := m.client.GetSecret(ctx, item.SourceNamespace, item.SourceName)
@@ -209,8 +212,8 @@ func materializerLabels(command MaterializationCommand, item domain.SecretMateri
 func materializerAnnotations(command MaterializationCommand, item domain.SecretMaterializationItem) map[string]string {
 	return map[string]string{"envplane.io/secret-plan-digest": command.PlanDigest, "envplane.io/secret-item-digest": digestText(item.ID + "\x00" + item.TargetName)}
 }
-func materializationIdempotencyKey(command MaterializationCommand, itemID string) string {
-	return digestText(command.TenantID + "\x00" + command.PlanID + "\x00" + command.PlanDigest + "\x00" + itemID)
+func materializationIdempotencyKey(plan domain.SecretMaterializationPlan, itemID string, operation domain.SecretMaterializationOperation) (string, error) {
+	return domain.SecretMaterializationIdempotencyKey(plan.TenantID, plan.ProjectID, plan.EnvironmentID, plan.TemplateDigest, plan.TargetNamespace, itemID, operation)
 }
 func digestText(value string) string {
 	sum := sha256.Sum256([]byte(value))

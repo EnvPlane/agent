@@ -46,6 +46,13 @@ func TestSecretMaterializationRuntimeClaimsExecutesAndReportsWithAgentAuth(t *te
 	if reported.Status != domain.SecretCommandSucceeded || reported.CommandID != command.CommandID || len(reported.Items) != 1 || reported.Items[0].Status != domain.SecretItemReady {
 		t.Fatalf("reported result = %#v", reported)
 	}
+	wantKey, err := domain.SecretMaterializationIdempotencyKey(plan.TenantID, plan.ProjectID, plan.EnvironmentID, plan.TemplateDigest, plan.TargetNamespace, "clone", domain.SecretOperationMaterialize)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if reported.Items[0].IdempotencyKey != wantKey {
+		t.Fatalf("result idempotency key=%q, want shared-contract key %q", reported.Items[0].IdempotencyKey, wantKey)
+	}
 }
 
 func TestMaterializationWireItemErrorCodeIsCanonical(t *testing.T) {
