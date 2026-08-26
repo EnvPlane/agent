@@ -540,7 +540,13 @@ func (s *KubernetesNamespaceSource) WatchNamespaces(ctx context.Context, handle 
 	if err != nil {
 		return err
 	}
-	resp, err := s.client.Do(req)
+	// A Kubernetes watch is a streaming response. The regular client has a
+	// bounded timeout for list/read calls, but applying it here cancels every
+	// healthy idle watch and makes the watcher log a false failure. The request
+	// context remains the shutdown boundary for this stream.
+	watchClient := *s.client
+	watchClient.Timeout = 0
+	resp, err := watchClient.Do(req)
 	if err != nil {
 		return err
 	}

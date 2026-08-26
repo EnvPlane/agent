@@ -141,6 +141,30 @@ func TestKubernetesNamespaceSourceInventoryOnlyDoesNotWatchNamespaces(t *testing
 	}
 }
 
+func TestKubernetesNamespaceWatchUsesRequestContextInsteadOfClientTimeout(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Query().Get("watch") != "true" {
+			http.NotFound(w, r)
+			return
+		}
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusOK)
+		if flusher, ok := w.(http.Flusher); ok {
+			flusher.Flush()
+		}
+		<-r.Context().Done()
+	}))
+	defer server.Close()
+
+	source := NewKubernetesNamespaceSource(server.URL, "kube-token", "", nil, &http.Client{Timeout: 5 * time.Millisecond})
+	ctx, cancel := context.WithTimeout(context.Background(), 50*time.Millisecond)
+	defer cancel()
+	err := source.WatchNamespaces(ctx, func(NamespaceEvent) error { return nil })
+	if err != context.DeadlineExceeded {
+		t.Fatalf("watch error = %v, want request context deadline", err)
+	}
+}
+
 func TestKubernetesNamespaceSourceInventoryIncludesUnselectedNamespaces(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.URL.Path != "/api/v1/namespaces" {
