@@ -195,12 +195,12 @@ func TestConfigAllowsServiceDNSOnlyForSameCluster(t *testing.T) {
 	}
 }
 
-func TestConfigRejectsInsecureSameClusterWithoutExplicitOptIn(t *testing.T) {
-	if err := ValidateControlPlaneEndpoint("http://envplane-control-plane.envplane.svc:8080", "sameCluster"); err == nil {
-		t.Fatal("same-cluster HTTP must require explicit insecure opt-in")
+func TestConfigAllowsSameClusterServiceHTTPWithoutInsecureOptIn(t *testing.T) {
+	if err := ValidateControlPlaneEndpoint("http://envplane-control-plane.envplane.svc:8080", "sameCluster"); err != nil {
+		t.Fatalf("same-cluster service HTTP must be accepted: %v", err)
 	}
-	if err := ValidateControlPlaneEndpointWithPolicy("http://envplane-control-plane.envplane.svc:8080", "sameCluster", true); err != nil {
-		t.Fatalf("explicit insecure opt-in must be accepted: %v", err)
+	if err := ValidateControlPlaneEndpoint("http://control-plane.example.test", "remote"); err == nil {
+		t.Fatal("remote HTTP must remain rejected")
 	}
 }
 

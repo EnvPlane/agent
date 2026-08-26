@@ -196,11 +196,11 @@ func ValidateControlPlaneEndpointWithPolicy(rawURL, endpointMode string, allowIn
 	if err != nil || (parsed.Scheme != "http" && parsed.Scheme != "https") || parsed.Hostname() == "" {
 		return fmt.Errorf("ENVPLANE_CONTROL_PLANE_URL must be an HTTP(S) URL")
 	}
-	if parsed.Scheme == "http" && !allowInsecure {
-		return fmt.Errorf("ENVPLANE_CONTROL_PLANE_URL must use HTTPS unless ENVPLANE_ALLOW_INSECURE_CONTROL_PLANE=true")
-	}
 	if mode != "remote" {
 		return nil
+	}
+	if parsed.Scheme == "http" && !allowInsecure {
+		return fmt.Errorf("ENVPLANE_CONTROL_PLANE_URL must use HTTPS unless ENVPLANE_ALLOW_INSECURE_CONTROL_PLANE=true")
 	}
 	if parsed.Scheme != "https" || parsed.User != nil || parsed.RawQuery != "" || parsed.Fragment != "" {
 		return fmt.Errorf("remote ENVPLANE_CONTROL_PLANE_URL must be an explicit stable HTTPS URL without credentials, query parameters, or fragments")
