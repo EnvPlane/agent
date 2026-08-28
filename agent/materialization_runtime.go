@@ -88,8 +88,12 @@ func runSecretMaterializationCommandOnce(ctx context.Context, cfg Config, report
 	} else {
 		var runtimeResults []MaterializationResult
 		runtimeResults, err = materializer.Execute(ctx, runtimeCommand)
-		if err == nil {
+		executeErr := err
+		if len(runtimeResults) > 0 {
 			result.Items, err = materializationWireResults(command.Plan, runtimeResults, result.FinishedAt)
+			if err == nil {
+				err = executeErr
+			}
 		}
 	}
 	if err != nil {
