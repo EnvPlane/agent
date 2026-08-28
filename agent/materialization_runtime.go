@@ -22,7 +22,7 @@ func (r *HTTPStatusReporter) FetchSecretMaterializationCommand(ctx context.Conte
 		return nil, err
 	}
 	request.Header.Set("Accept", "application/json")
-	request.Header.Set("Authorization", "Bearer "+strings.TrimSpace(cfg.AgentAuthToken))
+	request.Header.Set("Authorization", "Bearer "+r.Token())
 	response, err := r.client.Do(request)
 	if err != nil {
 		return nil, err
@@ -50,7 +50,7 @@ func (r *HTTPStatusReporter) ReportSecretMaterializationResult(ctx context.Conte
 		return err
 	}
 	path := "/api/v1/agents/secret-materialization/commands/" + url.PathEscape(result.CommandID) + "/result"
-	return r.postJSONWithBearer(ctx, path, result, cfg.AgentAuthToken, "report secret materialization result")
+	return r.postJSONWithBearer(ctx, path, result, r.Token(), "report secret materialization result")
 }
 
 func RunSecretMaterializationCommands(ctx context.Context, cfg Config, reporter *HTTPStatusReporter, materializer *SecretMaterializer, logger *slog.Logger) {
@@ -72,6 +72,9 @@ func RunSecretMaterializationCommands(ctx context.Context, cfg Config, reporter 
 }
 
 func runSecretMaterializationCommandOnce(ctx context.Context, cfg Config, reporter *HTTPStatusReporter, materializer *SecretMaterializer, logger *slog.Logger) error {
+	// Heartbeat recovery may rotate the token after startup. Do not use the
+	// stale Config snapshot for materialization requests or result reporting.
+	cfg.AgentAuthToken = reporter.Token()
 	command, err := reporter.FetchSecretMaterializationCommand(ctx, cfg)
 	if err != nil || command == nil {
 		return err

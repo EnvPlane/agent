@@ -38,8 +38,11 @@ func TestSecretMaterializationRuntimeClaimsExecutesAndReportsWithAgentAuth(t *te
 	if err != nil {
 		t.Fatal(err)
 	}
-	reporter := NewHTTPStatusReporterForAgent(server.URL, "runtime-token", "cluster", "agent", time.Second)
-	cfg := Config{ControlPlaneURL: server.URL, BootstrapProjectID: plan.ProjectID, ClusterID: "cluster", AgentID: "agent", AgentAuthToken: "runtime-token"}
+	reporter := NewHTTPStatusReporterForAgent(server.URL, "stale-token", "cluster", "agent", time.Second)
+	// Runtime recovery updates the shared reporter while this loop still owns
+	// its startup Config snapshot. Materialization must use the new token.
+	reporter.SetToken("runtime-token")
+	cfg := Config{ControlPlaneURL: server.URL, BootstrapProjectID: plan.ProjectID, ClusterID: "cluster", AgentID: "agent", AgentAuthToken: "stale-token"}
 	if err := runSecretMaterializationCommandOnce(context.Background(), cfg, reporter, materializer, nil); err != nil {
 		t.Fatal(err)
 	}

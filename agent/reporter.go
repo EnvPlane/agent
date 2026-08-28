@@ -10,6 +10,7 @@ import (
 	"net/http"
 	"net/url"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/envplane/contracts/domain"
@@ -78,6 +79,7 @@ func (r *HTTPStatusReporter) ReportEventsBatch(ctx context.Context, reports []En
 type NamespaceStatusReport = domain.NamespaceStatusReport
 
 type HTTPStatusReporter struct {
+	tokenMu   sync.RWMutex
 	baseURL   string
 	token     string
 	clusterID string
@@ -88,7 +90,16 @@ type HTTPStatusReporter struct {
 
 // SetToken updates the runtime credential obtained during agent registration.
 func (r *HTTPStatusReporter) SetToken(token string) {
+	r.tokenMu.Lock()
+	defer r.tokenMu.Unlock()
 	r.token = strings.TrimSpace(token)
+}
+
+// Token returns the current runtime credential shared by the agent loops.
+func (r *HTTPStatusReporter) Token() string {
+	r.tokenMu.RLock()
+	defer r.tokenMu.RUnlock()
+	return r.token
 }
 
 func NewHTTPStatusReporterForAgent(baseURL, token, clusterID, agentID string, timeout time.Duration) *HTTPStatusReporter {
@@ -120,7 +131,7 @@ func NewHTTPStatusReporterForAgentWithTLS(baseURL, token, clusterID, agentID str
 		BaseURL:    reporter.baseURL,
 		HTTPClient: client,
 		TokenProvider: func(context.Context) (string, error) {
-			return reporter.token, nil
+			return reporter.Token(), nil
 		},
 	}
 	return reporter
@@ -157,8 +168,8 @@ func (r *HTTPStatusReporter) ReportEvents(ctx context.Context, environmentID str
 		return err
 	}
 	req.Header.Set("Content-Type", "application/json")
-	if r.token != "" {
-		req.Header.Set("Authorization", "Bearer "+r.token)
+	if token := r.Token(); token != "" {
+		req.Header.Set("Authorization", "Bearer "+token)
 	}
 	resp, err := r.client.Do(req)
 	if err != nil {
@@ -187,8 +198,8 @@ func (r *HTTPStatusReporter) ReportFluxStatus(ctx context.Context, environmentID
 		return err
 	}
 	req.Header.Set("Content-Type", "application/json")
-	if r.token != "" {
-		req.Header.Set("Authorization", "Bearer "+r.token)
+	if token := r.Token(); token != "" {
+		req.Header.Set("Authorization", "Bearer "+token)
 	}
 	resp, err := r.client.Do(req)
 	if err != nil {
@@ -372,7 +383,7 @@ func (r *HTTPStatusReporter) postJSONWithBearer(ctx context.Context, path string
 }
 
 func (r *HTTPStatusReporter) postJSONDecode(ctx context.Context, path string, payload any, operation string, output any) error {
-	return r.postJSONDecodeWithBearer(ctx, path, payload, operation, output, r.token)
+	return r.postJSONDecodeWithBearer(ctx, path, payload, operation, output, r.Token())
 }
 
 func (r *HTTPStatusReporter) postJSONDecodeWithBearer(ctx context.Context, path string, payload any, operation string, output any, bearerToken string) error {
