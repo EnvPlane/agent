@@ -99,6 +99,9 @@ func runSecretMaterializationCommandOnce(ctx context.Context, cfg Config, report
 	if err != nil {
 		result.Status = domain.SecretCommandFailed
 		result.ErrorCode = materializationWireErrorCode(err)
+		if logger != nil {
+			logger.Warn("secret materialization execution failed", "command_id", command.CommandID, "plan_id", command.PlanID, "error_code", result.ErrorCode, "error", err)
+		}
 	}
 	if reportErr := reporter.ReportSecretMaterializationResult(ctx, cfg, result); reportErr != nil {
 		return reportErr
