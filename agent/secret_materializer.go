@@ -207,7 +207,7 @@ func (m *SecretMaterializer) applyCopiedSecret(ctx context.Context, command Mate
 }
 
 func materializerLabels(command MaterializationCommand, item domain.SecretMaterializationItem) map[string]string {
-	return map[string]string{"app.kubernetes.io/managed-by": "envplane", "envplane.io/secret-plan": command.PlanID, "envplane.io/secret-item": item.ID}
+	return map[string]string{"app.kubernetes.io/managed-by": "envplane", "envplane.io/secret-plan": materializerLabelID(command.PlanID), "envplane.io/secret-item": materializerLabelID(item.ID)}
 }
 func materializerAnnotations(command MaterializationCommand, item domain.SecretMaterializationItem) map[string]string {
 	return map[string]string{"envplane.io/secret-plan-digest": command.PlanDigest, "envplane.io/secret-item-digest": digestText(item.ID + "\x00" + item.TargetName)}
@@ -218,6 +218,10 @@ func materializationIdempotencyKey(plan domain.SecretMaterializationPlan, itemID
 func digestText(value string) string {
 	sum := sha256.Sum256([]byte(value))
 	return "sha256:" + hex.EncodeToString(sum[:])
+}
+func materializerLabelID(value string) string {
+	sum := sha256.Sum256([]byte(value))
+	return hex.EncodeToString(sum[:16])
 }
 func cloneSecretData(input map[string][]byte) map[string][]byte {
 	output := make(map[string][]byte, len(input))

@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"strings"
 	"testing"
 	"time"
 
@@ -106,6 +107,32 @@ func TestSecretMaterializerRejectsForeignAndUnsafeSecretsAndPlanSubstitution(t *
 	_, err = materializer.Execute(context.Background(), MaterializationCommand{TenantID: "tenant", PlanID: plan.PlanID, PlanDigest: plan.Digest, Audience: "runner", Plan: plan})
 	if !errors.Is(err, ErrUnsafeSecretType) {
 		t.Fatalf("unsafe type error = %v", err)
+	}
+}
+
+func TestSecretMaterializerUsesKubernetesSafeOwnershipLabels(t *testing.T) {
+	plan := materializerPlan(t, []domain.SecretStrategyConfig{{ID: "registry", Strategy: domain.SecretStrategyEncryptedClone, SourceNamespace: "base", SourceName: "source", TargetNamespace: "target", TargetName: "registry", EncryptedPayloadRef: "payload/registry"}})
+	fake := &materializerFake{secrets: map[string]SecretRecord{"base/source": {Type: "Opaque", Data: map[string][]byte{"value": []byte("redacted")}}}}
+	materializer, err := NewSecretMaterializer(fake, nil, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if _, err := materializer.Execute(context.Background(), MaterializationCommand{TenantID: "tenant", PlanID: plan.PlanID, PlanDigest: plan.Digest, Audience: "runner", Plan: plan}); err != nil {
+		t.Fatalf("execute materialization: %v", err)
+	}
+	if len(fake.applies) != 1 {
+		t.Fatalf("applies=%d, want one", len(fake.applies))
+	}
+	labels := fake.applies[0].Labels
+	for _, key := range []string{"envplane.io/secret-plan", "envplane.io/secret-item"} {
+		value := labels[key]
+		if len(value) != 32 || strings.ContainsAny(value, "/:") {
+			t.Fatalf("label %s=%q is not a bounded Kubernetes-safe digest", key, value)
+		}
+	}
+	if labels["envplane.io/secret-plan"] == plan.PlanID {
+		t.Fatal("canonical plan ID was exposed as a Kubernetes label value")
 	}
 }
 
