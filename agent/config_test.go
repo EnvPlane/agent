@@ -68,21 +68,14 @@ func TestConfigFromEnvCanonicalAliases(t *testing.T) {
 	}
 }
 
-func TestConfigFromEnvLegacyFallbackAndCanonicalWins(t *testing.T) {
-	for _, name := range []string{"ENVPLANE_CONTROL_PLANE_URL", "ENVPLANE_CONTROL_PLANE_URL", "ENVPLANE_CLUSTER_ID", "ENVPLANE_CLUSTER_ID", "ENVPLANE_AGENT_ID", "ENVPLANE_AGENT_ID"} {
-		t.Setenv(name, "")
-		_ = os.Unsetenv(name)
-	}
-	t.Setenv("ENVPLANE_CONTROL_PLANE_URL", "https://legacy.example")
-	t.Setenv("ENVPLANE_CLUSTER_ID", "legacy-cluster")
-	t.Setenv("ENVPLANE_AGENT_ID", "legacy-agent")
-	legacy := ConfigFromEnv()
-	if legacy.ControlPlaneURL != "https://legacy.example" || len(legacy.EnvDiagnostics) == 0 {
-		t.Fatalf("legacy fallback/diagnostic missing: %#v", legacy)
-	}
-	t.Setenv("ENVPLANE_CONTROL_PLANE_URL", "https://canonical.example")
-	if got := ConfigFromEnv().ControlPlaneURL; got != "https://canonical.example" {
-		t.Fatalf("canonical did not win mixed configuration: %q", got)
+func TestConfigFromEnvCanonicalVariablesDoNotEmitLegacyDiagnostics(t *testing.T) {
+	t.Setenv("ENVPLANE_CONTROL_PLANE_URL", "https://control-plane.example")
+	t.Setenv("ENVPLANE_CLUSTER_ID", "dev-cluster")
+	t.Setenv("ENVPLANE_AGENT_ID", "agent-1")
+
+	cfg := ConfigFromEnv()
+	if len(cfg.EnvDiagnostics) != 0 {
+		t.Fatalf("canonical ENVPLANE_* variables must not be reported as legacy: %#v", cfg.EnvDiagnostics)
 	}
 }
 

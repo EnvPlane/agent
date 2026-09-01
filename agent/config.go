@@ -312,20 +312,10 @@ func getenvBool(key string, fallback bool) bool {
 }
 
 func legacyDiagnostics() []string {
-	seen := map[string]bool{}
-	result := []string{}
-	for _, entry := range os.Environ() {
-		name, _, ok := strings.Cut(entry, "=")
-		if !ok || !strings.HasPrefix(name, "ENVPLANE_") {
-			continue
-		}
-		item := "deprecated:" + name
-		if !seen[item] {
-			seen[item] = true
-			result = append(result, item)
-		}
-	}
-	return result
+	// ENVPLANE_* is the canonical Agent configuration namespace. Keep this
+	// hook for a future, explicitly supported alias without reporting every
+	// normal chart deployment as deprecated.
+	return nil
 }
 
 func splitCSV(value string) []string {
