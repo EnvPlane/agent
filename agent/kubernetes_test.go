@@ -118,8 +118,10 @@ func TestKubernetesNamespaceSourceUsesNamespacedReadsForExplicitAllowlist(t *tes
 	if !reflect.DeepEqual(paths, []string{"/api/v1/namespaces", "/api/v1/namespaces/dev-base", "/api/v1/namespaces/shared"}) {
 		t.Fatalf("namespace paths = %#v", paths)
 	}
-	if err := source.WatchNamespaces(context.Background(), func(NamespaceEvent) error { return nil }); err != nil {
-		t.Fatalf("explicit namespace watch should use polling: %v", err)
+	watchCtx, cancel := context.WithTimeout(context.Background(), 20*time.Millisecond)
+	defer cancel()
+	if err := source.WatchNamespaces(watchCtx, func(NamespaceEvent) error { return nil }); err != context.DeadlineExceeded {
+		t.Fatalf("explicit namespace watch error = %v, want polling context deadline", err)
 	}
 }
 
@@ -133,8 +135,10 @@ func TestKubernetesNamespaceSourceInventoryOnlyDoesNotWatchNamespaces(t *testing
 
 	source := NewKubernetesNamespaceSource(server.URL, "kube-token", "", nil, server.Client())
 	source.namespaceInventoryOnly = true
-	if err := source.WatchNamespaces(context.Background(), func(NamespaceEvent) error { return nil }); err != nil {
-		t.Fatalf("inventory-only namespace watch should use polling: %v", err)
+	watchCtx, cancel := context.WithTimeout(context.Background(), 20*time.Millisecond)
+	defer cancel()
+	if err := source.WatchNamespaces(watchCtx, func(NamespaceEvent) error { return nil }); err != context.DeadlineExceeded {
+		t.Fatalf("inventory-only namespace watch error = %v, want polling context deadline", err)
 	}
 	if requests != 0 {
 		t.Fatalf("inventory-only namespace watch made %d HTTP requests", requests)

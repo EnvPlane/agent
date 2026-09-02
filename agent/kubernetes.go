@@ -530,13 +530,18 @@ func (s *KubernetesNamespaceSource) WatchNamespaces(ctx context.Context, handle 
 	if s.namespaceInventoryOnly {
 		// Inventory-only Agents have list permission for Namespace objects so
 		// Bootstrap can offer an explicit selection, but deliberately lack the
-		// cluster-wide watch permission. SyncOnce performs the periodic refresh.
-		return nil
+		// cluster-wide watch permission. Keep this call active so NamespaceWatcher
+		// uses its resync ticker instead of immediately restarting SyncOnce.
+		<-ctx.Done()
+		return ctx.Err()
 	}
 	if len(s.allowed) > 0 && strings.TrimSpace(s.selector) == "" {
 		// Namespace watches require cluster-scope list/watch permissions. The
 		// explicit allowlist is intentionally polled by NamespaceWatcher instead.
-		return nil
+		// Blocking here is required: a successful immediate return is interpreted
+		// as a closed watch and creates a hot full-sync loop.
+		<-ctx.Done()
+		return ctx.Err()
 	}
 	req, err := s.newNamespacesRequest(ctx, true)
 	if err != nil {
