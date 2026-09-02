@@ -180,6 +180,29 @@ func TestResourceDiscoveryScannerDoesNotCallSecretsAPIWithoutExplicitOptIn(t *te
 	t.Fatal("secret-enabled scanner did not call the Secrets API")
 }
 
+func TestImplicitNamespaceBootstrapResourcesAreExcluded(t *testing.T) {
+	if !isImplicitNamespaceBootstrapResource("ConfigMap", "kube-root-ca.crt", map[string]any{}) {
+		t.Fatal("namespace root CA ConfigMap must be excluded")
+	}
+	if !isImplicitNamespaceBootstrapResource("ServiceAccount", "default", map[string]any{
+		"metadata": map[string]any{"name": "default", "namespace": "demo"},
+	}) {
+		t.Fatal("unmodified default ServiceAccount must be excluded")
+	}
+	for name, resource := range map[string]map[string]any{
+		"image pull secrets": {"imagePullSecrets": []any{map[string]any{"name": "registry"}}},
+		"explicit automount": {"automountServiceAccountToken": false},
+		"custom labels":      {"metadata": map[string]any{"labels": map[string]any{"app": "demo"}}},
+	} {
+		if isImplicitNamespaceBootstrapResource("ServiceAccount", "default", resource) {
+			t.Fatalf("customized default ServiceAccount with %s must remain discoverable", name)
+		}
+	}
+	if isImplicitNamespaceBootstrapResource("ConfigMap", "app-config", map[string]any{}) {
+		t.Fatal("application ConfigMap must remain discoverable")
+	}
+}
+
 func TestResourceDiscoveryScannerHandlesKubernetesLabelSelectorsAndMalformedItems(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")

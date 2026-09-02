@@ -405,6 +405,9 @@ func (s *ResourceDiscoveryScanner) listNamespaceResources(ctx context.Context, n
 		if name == "" {
 			continue
 		}
+		if index < len(rawPayload.Items) && isImplicitNamespaceBootstrapResource(kind, name, rawPayload.Items[index]) {
+			continue
+		}
 		if kind == "Job" && index < len(rawPayload.Items) && isExcludedRuntimeJob(rawPayload.Items[index]) {
 			itemWarnings = append(itemWarnings, fmt.Sprintf("%s Job/%s: excluded runtime child", namespace, name))
 			continue
@@ -436,6 +439,27 @@ func (s *ResourceDiscoveryScanner) listNamespaceResources(ctx context.Context, n
 		})
 	}
 	return snapshots, strings.Join(itemWarnings, "; "), nil
+}
+
+func isImplicitNamespaceBootstrapResource(kind, name string, resource map[string]any) bool {
+	if kind == "ConfigMap" && name == "kube-root-ca.crt" {
+		return true
+	}
+	if kind != "ServiceAccount" || name != "default" {
+		return false
+	}
+	for _, key := range []string{"imagePullSecrets", "secrets", "automountServiceAccountToken"} {
+		if value, exists := resource[key]; exists && value != nil {
+			return false
+		}
+	}
+	metadata, _ := resource["metadata"].(map[string]any)
+	for _, key := range []string{"labels", "annotations"} {
+		if values, ok := metadata[key].(map[string]any); ok && len(values) > 0 {
+			return false
+		}
+	}
+	return true
 }
 
 type kubernetesWorkloadStatus struct {
