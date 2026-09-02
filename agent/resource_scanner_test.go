@@ -87,6 +87,10 @@ func TestResourceDiscoveryScannerFluxSourceMapping(t *testing.T) {
 							"name":      "app-config",
 							"namespace": "flux-system",
 						},
+						"spec": map[string]any{
+							"url": "https://oauth2:secret@gitlab.com/envplane/gitops.git?token=secret#fragment",
+							"ref": map[string]any{"branch": "main"},
+						},
 					},
 				},
 			})
@@ -137,6 +141,13 @@ func TestResourceDiscoveryScannerFluxSourceMapping(t *testing.T) {
 	}
 	if deploymentSnapshot.SourceMapping.GitRepositoryName != "app-config" {
 		t.Fatalf("deployment git source mapping = %#v", deploymentSnapshot.SourceMapping)
+	}
+	if deploymentSnapshot.SourceMapping.GitRepositoryURL != "https://gitlab.com/envplane/gitops.git" || deploymentSnapshot.SourceMapping.GitRepositoryBranch != "main" {
+		t.Fatalf("deployment safe git source identity = %#v", deploymentSnapshot.SourceMapping)
+	}
+	gitRepositorySnapshot := byKindName["GitRepository/flux-system/app-config"]
+	if gitRepositorySnapshot.SourceMapping == nil || strings.Contains(gitRepositorySnapshot.SourceMapping.GitRepositoryURL, "secret") {
+		t.Fatalf("GitRepository credential leaked in discovery snapshot: %#v", gitRepositorySnapshot.SourceMapping)
 	}
 
 	unresolvedKey := "Deployment/dev-base/unmapped"

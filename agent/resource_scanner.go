@@ -172,6 +172,16 @@ func (s *ResourceDiscoveryScanner) Scan(ctx context.Context, namespaces []string
 			Name:        item.Name,
 			Labels:      item.Labels,
 			Annotations: sanitizeResourceAnnotations("GitRepository", item.Annotations),
+			SourceMapping: &domain.ResourceSourceMapping{
+				Status:                 "resolved",
+				Kind:                   "GitRepository",
+				Namespace:              item.Namespace,
+				Name:                   item.Name,
+				GitRepositoryNamespace: item.Namespace,
+				GitRepositoryName:      item.Name,
+				GitRepositoryURL:       item.RepositoryURL,
+				GitRepositoryBranch:    item.RepositoryBranch,
+			},
 		})
 	}
 	for index := range items {
@@ -1174,6 +1184,12 @@ func (s *ResourceDiscoveryScanner) listGitRepositories(ctx context.Context, name
 				Labels      map[string]string `json:"labels"`
 				Annotations map[string]string `json:"annotations"`
 			} `json:"metadata"`
+			Spec struct {
+				URL string `json:"url"`
+				Ref struct {
+					Branch string `json:"branch"`
+				} `json:"ref"`
+			} `json:"spec"`
 		} `json:"items"`
 	}
 	if err := json.NewDecoder(resp.Body).Decode(&payload); err != nil {
@@ -1190,10 +1206,12 @@ func (s *ResourceDiscoveryScanner) listGitRepositories(ctx context.Context, name
 			ns = namespace
 		}
 		items = append(items, fluxResource{
-			Namespace:   ns,
-			Name:        name,
-			Labels:      item.Metadata.Labels,
-			Annotations: item.Metadata.Annotations,
+			Namespace:        ns,
+			Name:             name,
+			Labels:           item.Metadata.Labels,
+			Annotations:      item.Metadata.Annotations,
+			RepositoryURL:    safeFluxRepositoryURL(item.Spec.URL),
+			RepositoryBranch: strings.TrimSpace(item.Spec.Ref.Branch),
 		})
 	}
 	return items, "", nil
@@ -1290,7 +1308,7 @@ func sourceMappingFromFluxSourceRef(
 			Reason:    "sourceRef name is empty",
 		}
 	}
-	if _, ok := gitRepositoryByKey[fluxKey(namespace, name)]; ok {
+	if repository, ok := gitRepositoryByKey[fluxKey(namespace, name)]; ok {
 		return &domain.ResourceSourceMapping{
 			Status:                 "resolved",
 			Kind:                   "GitRepository",
@@ -1298,6 +1316,8 @@ func sourceMappingFromFluxSourceRef(
 			Name:                   name,
 			GitRepositoryNamespace: namespace,
 			GitRepositoryName:      name,
+			GitRepositoryURL:       repository.RepositoryURL,
+			GitRepositoryBranch:    repository.RepositoryBranch,
 		}
 	}
 	return &domain.ResourceSourceMapping{
@@ -1327,10 +1347,29 @@ func attachGitRepositoryMapping(
 	}
 	mapping.GitRepositoryNamespace = namespace
 	mapping.GitRepositoryName = name
-	if _, ok := gitRepositoryByKey[fluxKey(namespace, name)]; !ok && mapping.Status == "resolved" {
+	repository, ok := gitRepositoryByKey[fluxKey(namespace, name)]
+	if !ok && mapping.Status == "resolved" {
 		mapping.Status = "unresolved"
 		mapping.Reason = "referenced git repository not found"
+		return
 	}
+	mapping.GitRepositoryURL = repository.RepositoryURL
+	mapping.GitRepositoryBranch = repository.RepositoryBranch
+}
+
+func safeFluxRepositoryURL(raw string) string {
+	raw = strings.TrimSpace(raw)
+	if raw == "" {
+		return ""
+	}
+	parsed, err := url.Parse(raw)
+	if err != nil || parsed.Scheme == "" || parsed.Host == "" {
+		return ""
+	}
+	parsed.User = nil
+	parsed.RawQuery = ""
+	parsed.Fragment = ""
+	return parsed.String()
 }
 
 func fluxKey(namespace string, name string) string {
@@ -1371,11 +1410,13 @@ func normalizeFluxSourceRef(ref fluxSourceRef, defaultNamespace string) fluxSour
 }
 
 type fluxResource struct {
-	Namespace   string
-	Name        string
-	Labels      map[string]string
-	Annotations map[string]string
-	SourceRef   fluxSourceRef
+	Namespace        string
+	Name             string
+	Labels           map[string]string
+	Annotations      map[string]string
+	SourceRef        fluxSourceRef
+	RepositoryURL    string
+	RepositoryBranch string
 }
 
 type fluxSourceRef struct {
