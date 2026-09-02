@@ -254,12 +254,29 @@ func TestNamespaceWatcherReportsFluxStatus(t *testing.T) {
 	if len(reporter.fluxReports) != 1 {
 		t.Fatalf("flux reports = %d", len(reporter.fluxReports))
 	}
+	if len(reporter.reports) != 1 || reporter.reports[0].Status != domain.StatusReady {
+		t.Fatalf("namespace status must include authoritative Flux readiness: %#v", reporter.reports)
+	}
 	report := reporter.fluxReports[0]
 	if report.environmentID != "kan-406" {
 		t.Fatalf("environment id = %q", report.environmentID)
 	}
 	if report.status.Status != domain.StatusReady {
 		t.Fatalf("flux status = %q", report.status.Status)
+	}
+}
+
+func TestMergeNamespaceAndFluxStatusIgnoresEmptyFluxInventory(t *testing.T) {
+	if got := mergeNamespaceAndFluxStatus(domain.StatusReady, domain.FluxStatus{Status: domain.StatusCreating}); got != domain.StatusReady {
+		t.Fatalf("empty Flux inventory changed namespace status to %q", got)
+	}
+	ready := domain.FluxStatus{Status: domain.StatusReady, Kustomizations: []domain.FluxResourceStatus{{Kind: "Kustomization", Name: "env.generic", Ready: true}}}
+	if got := mergeNamespaceAndFluxStatus(domain.StatusCreating, ready); got != domain.StatusReady {
+		t.Fatalf("ready Flux status merged to %q", got)
+	}
+	failed := domain.FluxStatus{Status: domain.StatusFailed, Kustomizations: []domain.FluxResourceStatus{{Kind: "Kustomization", Name: "env.generic", Failed: true}}}
+	if got := mergeNamespaceAndFluxStatus(domain.StatusReady, failed); got != domain.StatusFailed {
+		t.Fatalf("failed Flux status merged to %q", got)
 	}
 }
 

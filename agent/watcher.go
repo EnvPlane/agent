@@ -331,6 +331,20 @@ func (w *NamespaceWatcher) reportEventWithStatus(ctx context.Context, eventType 
 			report.Message = namespaceStatusMessage(eventType, namespace, report.Status) + "; " + workloadReport.Message
 		}
 	}
+	if w.fluxCollector != nil && report.Status != domain.StatusTerminated {
+		fluxStatus, err := w.fluxCollector.Collect(ctx, report.EnvironmentID, namespace)
+		if err != nil {
+			w.logger.Error("flux status collection failed", "environment", report.EnvironmentID, "namespace", namespace.Metadata.Name, "error", err)
+		} else {
+			report.Status = mergeNamespaceAndFluxStatus(report.Status, fluxStatus)
+			report.Message += "; " + fluxStatus.Message
+			if err := w.reporter.ReportFluxStatus(ctx, report.EnvironmentID, fluxStatus); err != nil {
+				w.logger.Error("flux status report failed", "environment", report.EnvironmentID, "namespace", namespace.Metadata.Name, "error", err)
+			} else {
+				w.logger.Info("flux status reported", "environment", report.EnvironmentID, "namespace", namespace.Metadata.Name, "status", fluxStatus.Status)
+			}
+		}
+	}
 	if err := reportStatus(report); err != nil {
 		return err
 	}
@@ -344,18 +358,21 @@ func (w *NamespaceWatcher) reportEventWithStatus(ctx context.Context, eventType 
 			w.logger.Info("kubernetes events reported", "environment", report.EnvironmentID, "namespace", namespace.Metadata.Name, "count", len(events))
 		}
 	}
-	if w.fluxCollector != nil && report.Status != domain.StatusTerminated {
-		fluxStatus, err := w.fluxCollector.Collect(ctx, report.EnvironmentID, namespace)
-		if err != nil {
-			w.logger.Error("flux status collection failed", "environment", report.EnvironmentID, "namespace", namespace.Metadata.Name, "error", err)
-		} else if err := w.reporter.ReportFluxStatus(ctx, report.EnvironmentID, fluxStatus); err != nil {
-			w.logger.Error("flux status report failed", "environment", report.EnvironmentID, "namespace", namespace.Metadata.Name, "error", err)
-		} else {
-			w.logger.Info("flux status reported", "environment", report.EnvironmentID, "namespace", namespace.Metadata.Name, "status", fluxStatus.Status)
-		}
-	}
 	w.logger.Info("namespace status reported", "environment", report.EnvironmentID, "namespace", report.Namespace, "status", report.Status, "event", eventType)
 	return nil
+}
+
+func mergeNamespaceAndFluxStatus(namespaceStatus domain.EnvironmentStatus, fluxStatus domain.FluxStatus) domain.EnvironmentStatus {
+	if len(fluxStatus.Kustomizations)+len(fluxStatus.HelmReleases) == 0 {
+		return namespaceStatus
+	}
+	if namespaceStatus == domain.StatusFailed || fluxStatus.Status == domain.StatusFailed {
+		return domain.StatusFailed
+	}
+	if fluxStatus.Status == domain.StatusReady {
+		return domain.StatusReady
+	}
+	return domain.StatusCreating
 }
 
 func BuildNamespaceStatusReport(eventType string, namespace Namespace) (NamespaceStatusReport, bool) {
