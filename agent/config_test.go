@@ -54,6 +54,29 @@ func TestConfigFromEnvLoadsKubernetesRateLimit(t *testing.T) {
 	}
 }
 
+func TestConfigFromEnvLoadsLoadBalancerCapability(t *testing.T) {
+	t.Setenv("ENVPLANE_LOAD_BALANCER_CAPABILITY", "unsupported")
+	if got := ConfigFromEnv().LoadBalancerCapability; got != "unsupported" {
+		t.Fatalf("load balancer capability = %q", got)
+	}
+	cfg := Config{
+		ControlPlaneURL:        "https://envplane.example",
+		ClusterID:              "cluster-a",
+		AgentID:                "agent-a",
+		RegistrationToken:      "registration-token",
+		KubernetesAPIURL:       "https://kubernetes.example",
+		ResyncInterval:         time.Second,
+		ReportTimeout:          time.Second,
+		HeartbeatInterval:      time.Second,
+		KubernetesQPS:          1,
+		KubernetesBurst:        1,
+		LoadBalancerCapability: "sometimes",
+	}
+	if err := cfg.Validate(); err == nil || !strings.Contains(err.Error(), "ENVPLANE_LOAD_BALANCER_CAPABILITY") {
+		t.Fatalf("expected invalid capability error, got %v", err)
+	}
+}
+
 func TestConfigFromEnvCanonicalAliases(t *testing.T) {
 	for _, name := range []string{"ENVPLANE_CONTROL_PLANE_URL", "ENVPLANE_CONTROL_PLANE_URL", "ENVPLANE_CLUSTER_ID", "ENVPLANE_CLUSTER_ID", "ENVPLANE_AGENT_ID", "ENVPLANE_AGENT_ID"} {
 		t.Setenv(name, "")
@@ -258,5 +281,10 @@ func TestCapabilityConfigFingerprintChangesOnlyForDiscoveryConfiguration(t *test
 	changed.ReadSecrets = true
 	if changed.CapabilityConfigFingerprint() == base.CapabilityConfigFingerprint() {
 		t.Fatal("secret discovery change must alter fingerprint")
+	}
+	changed = base
+	changed.LoadBalancerCapability = "unsupported"
+	if changed.CapabilityConfigFingerprint() == base.CapabilityConfigFingerprint() {
+		t.Fatal("load balancer capability change must alter fingerprint")
 	}
 }

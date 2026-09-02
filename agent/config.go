@@ -51,6 +51,7 @@ type Config struct {
 	HeartbeatInterval         time.Duration
 	KubernetesQPS             float64
 	KubernetesBurst           int
+	LoadBalancerCapability    string
 	RemoteGeneration          int64
 }
 
@@ -83,6 +84,7 @@ func (c Config) CapabilityConfigFingerprint() string {
 		"excludedNamespaces=" + normalizeList(c.ExcludedNamespaces),
 		"fluxNamespace=" + strings.TrimSpace(c.FluxNamespace),
 		"readSecrets=" + strconv.FormatBool(c.ReadSecrets),
+		"loadBalancerCapability=" + strings.ToLower(strings.TrimSpace(c.LoadBalancerCapability)),
 	}, "\x00")
 	sum := sha256.Sum256([]byte(payload))
 	return fmt.Sprintf("sha256:%x", sum[:])
@@ -129,6 +131,7 @@ func ConfigFromEnv() Config {
 		HeartbeatInterval:      time.Duration(getenvInt("ENVPLANE_AGENT_HEARTBEAT_SECONDS", 30)) * time.Second,
 		KubernetesQPS:          getenvFloat("ENVPLANE_KUBERNETES_QPS", defaultKubernetesQPS),
 		KubernetesBurst:        getenvInt("ENVPLANE_KUBERNETES_BURST", defaultKubernetesBurst),
+		LoadBalancerCapability: strings.ToLower(strings.TrimSpace(getenv("ENVPLANE_LOAD_BALANCER_CAPABILITY", "auto"))),
 		RemoteGeneration:       int64(getenvInt("ENVPLANE_REMOTE_GENERATION", 0)),
 	}
 	cfg.EnvDiagnostics = legacyDiagnostics()
@@ -173,6 +176,11 @@ func (c Config) Validate() error {
 	}
 	if c.KubernetesQPS > 0 && c.KubernetesBurst <= 0 {
 		return fmt.Errorf("kubernetes burst must be positive when qps is enabled")
+	}
+	switch strings.ToLower(strings.TrimSpace(c.LoadBalancerCapability)) {
+	case "", "auto", "supported", "unsupported":
+	default:
+		return fmt.Errorf("ENVPLANE_LOAD_BALANCER_CAPABILITY must be auto, supported, or unsupported")
 	}
 	return nil
 }

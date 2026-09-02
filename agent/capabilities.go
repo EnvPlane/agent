@@ -22,6 +22,8 @@ type versionResponse struct {
 	GitVersion string `json:"gitVersion"`
 }
 
+const loadBalancerCapabilityPrefix = "services.loadBalancer="
+
 func (s *KubernetesNamespaceSource) DiscoverCapabilities(ctx context.Context) (ClusterCapabilities, error) {
 	version := s.discoverKubernetesVersion(ctx)
 	capabilities := map[string]struct{}{}
@@ -89,6 +91,7 @@ func (s *KubernetesNamespaceSource) DiscoverCapabilities(ctx context.Context) (C
 		report.CertManagerCRDs = filterBySuffix(crds, ".cert-manager.io")
 		report.ExternalDNSPresent = containsValue(crds, "dnsendpoints.externaldns.k8s.io")
 	}
+	capabilities[loadBalancerCapabilityPrefix+s.detectLoadBalancerCapability(crds)] = struct{}{}
 	storageClasses, err := s.ListStorageClasses(ctx)
 	if err != nil {
 		report.PermissionWarnings = append(report.PermissionWarnings, fmt.Sprintf("list storage classes failed: %v", err))
@@ -102,6 +105,27 @@ func (s *KubernetesNamespaceSource) DiscoverCapabilities(ctx context.Context) (C
 	sort.Strings(items)
 	report.CapabilityFlags = append(report.CapabilityFlags, items...)
 	return ClusterCapabilities{KubernetesVersion: version, Capabilities: items, Report: report}, nil
+}
+
+func (s *KubernetesNamespaceSource) detectLoadBalancerCapability(crds []string) string {
+	switch strings.ToLower(strings.TrimSpace(s.loadBalancerCapability)) {
+	case "supported":
+		return "supported"
+	case "unsupported":
+		return "unsupported"
+	}
+	// These APIs are installed by common in-cluster load-balancer providers.
+	// Cloud-controller implementations do not expose a portable discovery API,
+	// so auto mode deliberately reports unknown rather than guessing support.
+	for _, name := range crds {
+		name = strings.ToLower(strings.TrimSpace(name))
+		if strings.HasSuffix(name, ".metallb.io") ||
+			name == "ciliumloadbalancerippools.cilium.io" ||
+			name == "loadbalancerippools.cilium.io" {
+			return "supported"
+		}
+	}
+	return "unknown"
 }
 
 func (s *KubernetesNamespaceSource) discoverKubernetesVersion(ctx context.Context) string {

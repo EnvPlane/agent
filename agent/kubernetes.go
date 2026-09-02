@@ -46,6 +46,7 @@ type KubernetesNamespaceSource struct {
 	namespaceInventoryOnly bool
 	excluded               map[string]struct{}
 	fluxNS                 string
+	loadBalancerCapability string
 	client                 *http.Client
 }
 
@@ -353,6 +354,7 @@ func NewKubernetesNamespaceSourceFromConfig(cfg Config) (*KubernetesNamespaceSou
 	source := NewKubernetesNamespaceSourceWithRateLimit(cfg.KubernetesAPIURL, token, cfg.NamespaceSelector, cfg.Namespaces, client, cfg.KubernetesQPS, cfg.KubernetesBurst, cfg.ExcludedNamespaces...)
 	source.namespaceInventoryOnly = cfg.NamespaceInventoryOnly
 	source.fluxNS = cfg.FluxNamespace
+	source.loadBalancerCapability = cfg.LoadBalancerCapability
 	return source, nil
 }
 

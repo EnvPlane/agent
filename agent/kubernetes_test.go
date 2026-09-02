@@ -376,7 +376,7 @@ func TestKubernetesNamespaceSourceDiscoversCapabilities(t *testing.T) {
 		t.Fatalf("discover capabilities: %v", err)
 	}
 
-	expected := []string{"apps-v1", "core-v1", "flux-helm-v2", "flux-kustomize-v1"}
+	expected := []string{"apps-v1", "core-v1", "flux-helm-v2", "flux-kustomize-v1", "services.loadBalancer=unknown"}
 	if capabilities.KubernetesVersion != "v1.30.1" {
 		t.Fatalf("version = %q", capabilities.KubernetesVersion)
 	}
@@ -394,6 +394,38 @@ func TestKubernetesNamespaceSourceDiscoversCapabilities(t *testing.T) {
 	}
 	if got, want := capabilities.Report.StorageClasses, []string{"standard"}; !reflect.DeepEqual(got, want) {
 		t.Fatalf("storage classes = %#v want %#v", got, want)
+	}
+	if !containsValue(capabilities.Report.CapabilityFlags, "services.loadBalancer=unknown") {
+		t.Fatalf("load balancer capability flags = %#v", capabilities.Report.CapabilityFlags)
+	}
+}
+
+func TestKubernetesNamespaceSourceDiscoversLoadBalancerCapability(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/apis/apiextensions.k8s.io/v1/customresourcedefinitions":
+			_ = json.NewEncoder(w).Encode(map[string]any{"items": []any{map[string]any{"metadata": map[string]string{"name": "ipaddresspools.metallb.io"}}}})
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+	defer server.Close()
+
+	source := NewKubernetesNamespaceSource(server.URL, "token", "", nil, server.Client())
+	capabilities, err := source.DiscoverCapabilities(context.Background())
+	if err != nil {
+		t.Fatalf("discover capabilities: %v", err)
+	}
+	if !containsValue(capabilities.Report.CapabilityFlags, "services.loadBalancer=supported") {
+		t.Fatalf("load balancer capability flags = %#v", capabilities.Report.CapabilityFlags)
+	}
+	source.loadBalancerCapability = "unsupported"
+	capabilities, err = source.DiscoverCapabilities(context.Background())
+	if err != nil {
+		t.Fatalf("discover overridden capabilities: %v", err)
+	}
+	if !containsValue(capabilities.Report.CapabilityFlags, "services.loadBalancer=unsupported") {
+		t.Fatalf("overridden load balancer capability flags = %#v", capabilities.Report.CapabilityFlags)
 	}
 }
 
