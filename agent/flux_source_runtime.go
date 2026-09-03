@@ -36,7 +36,8 @@ func (r *HTTPStatusReporter) FetchFluxSourceCommand(ctx context.Context, cfg Con
 		return nil, nil
 	}
 	if resp.StatusCode/100 != 2 {
-		return nil, fmt.Errorf("fetch Flux source command: status=%d", resp.StatusCode)
+		body, _ := io.ReadAll(io.LimitReader(resp.Body, 4096))
+		return nil, fmt.Errorf("fetch Flux source command: status=%d body=%s", resp.StatusCode, strings.TrimSpace(string(body)))
 	}
 	var command domain.AgentFluxSourceCommand
 	if err := json.NewDecoder(resp.Body).Decode(&command); err != nil {
@@ -61,7 +62,8 @@ func (r *HTTPStatusReporter) FetchFluxSourceCredential(ctx context.Context, cfg 
 	}
 	defer resp.Body.Close()
 	if resp.StatusCode/100 != 2 {
-		return fluxSourceCredential{}, fmt.Errorf("fetch Flux source credential: status=%d", resp.StatusCode)
+		body, _ := io.ReadAll(io.LimitReader(resp.Body, 4096))
+		return fluxSourceCredential{}, fmt.Errorf("fetch Flux source credential: status=%d body=%s", resp.StatusCode, strings.TrimSpace(string(body)))
 	}
 	var credential fluxSourceCredential
 	if err := json.NewDecoder(resp.Body).Decode(&credential); err != nil {
