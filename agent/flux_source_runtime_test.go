@@ -84,6 +84,10 @@ func TestApplyFluxSourceCreatesProjectKustomization(t *testing.T) {
 	if sourceRef["name"] != "checkout-gitops" || sourceRef["kind"] != "GitRepository" {
 		t.Fatalf("unexpected sourceRef: %#v", sourceRef)
 	}
+	secret, ok := patched["/api/v1/namespaces/flux-system/secrets/checkout-gitops-auth"]
+	if !ok || secret["type"] != "kubernetes.io/basic-auth" {
+		t.Fatalf("Git credential Secret must use basic-auth type: %#v", secret)
+	}
 }
 
 func TestApplyFluxSourceAdoptsOnlySafeLegacyProjectResources(t *testing.T) {

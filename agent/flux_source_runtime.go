@@ -118,7 +118,10 @@ func runFluxSourceCommandOnce(ctx context.Context, cfg Config, reporter *HTTPSta
 }
 
 func (s *KubernetesNamespaceSource) applyFluxSource(ctx context.Context, command domain.AgentFluxSourceCommand, credential fluxSourceCredential) error {
-	secret := map[string]any{"apiVersion": "v1", "kind": "Secret", "metadata": map[string]any{"name": command.CredentialSecretName, "namespace": command.Namespace, "labels": map[string]string{"app.kubernetes.io/managed-by": "envplane", "envplane.io/project-id": command.ProjectID}}, "type": "Opaque", "data": map[string]string{"username": base64.StdEncoding.EncodeToString([]byte(credential.Username)), "password": base64.StdEncoding.EncodeToString([]byte(credential.Password))}}
+	// Flux GitRepository credentials use the Kubernetes basic-auth key contract.
+	// Keeping the canonical Secret type also lets an upgraded Agent adopt the
+	// historical basic-auth Secret without an immutable-type apply conflict.
+	secret := map[string]any{"apiVersion": "v1", "kind": "Secret", "metadata": map[string]any{"name": command.CredentialSecretName, "namespace": command.Namespace, "labels": map[string]string{"app.kubernetes.io/managed-by": "envplane", "envplane.io/project-id": command.ProjectID}}, "type": "kubernetes.io/basic-auth", "data": map[string]string{"username": base64.StdEncoding.EncodeToString([]byte(credential.Username)), "password": base64.StdEncoding.EncodeToString([]byte(credential.Password))}}
 	if err := s.applyFluxObject(ctx, "/api/v1/namespaces/"+url.PathEscape(command.Namespace)+"/secrets", command.CredentialSecretName, secret); err != nil {
 		return err
 	}
