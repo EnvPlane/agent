@@ -144,6 +144,7 @@ func (s *KubernetesNamespaceSource) applyFluxObject(ctx context.Context, collect
 				Metadata struct {
 					Labels map[string]string `json:"labels"`
 				} `json:"metadata"`
+				Type string `json:"type"`
 			}
 			decodeErr := json.NewDecoder(response.Body).Decode(&existing)
 			_ = response.Body.Close()
@@ -152,7 +153,7 @@ func (s *KubernetesNamespaceSource) applyFluxObject(ctx context.Context, collect
 			}
 			metadata := object["metadata"].(map[string]any)
 			labels := metadata["labels"].(map[string]string)
-			if existing.Metadata.Labels["app.kubernetes.io/managed-by"] != "envplane" || existing.Metadata.Labels["envplane.io/project-id"] != labels["envplane.io/project-id"] {
+			if !isOwnedFluxSourceResource(existing.Metadata.Labels, existing.Type, object, name, labels["envplane.io/project-id"]) {
 				return fmt.Errorf("refuse to overwrite foreign Flux source resource")
 			}
 		} else {
@@ -187,4 +188,21 @@ func (s *KubernetesNamespaceSource) applyFluxObject(ctx context.Context, collect
 		return fmt.Errorf("apply Flux source: status=%d body=%s", resp.StatusCode, strings.TrimSpace(string(raw)))
 	}
 	return nil
+}
+
+// isOwnedFluxSourceResource recognizes only the two historical forms emitted
+// by EnvPlane before the project-id label was standardized. A legacy
+// GitRepository keeps the old project label; a legacy basic-auth Secret was
+// intentionally unlabelled. Both are adopted only while applying the
+// deterministic project Flux source names. Everything else remains foreign.
+func isOwnedFluxSourceResource(existingLabels map[string]string, existingType string, object map[string]any, name, projectID string) bool {
+	projectID = strings.TrimSpace(projectID)
+	if existingLabels["app.kubernetes.io/managed-by"] == "envplane" && (existingLabels["envplane.io/project-id"] == projectID || existingLabels["envplane.io/project"] == projectID) {
+		return true
+	}
+	if len(existingLabels) != 0 || existingType != "kubernetes.io/basic-auth" || !strings.HasSuffix(name, "-auth") {
+		return false
+	}
+	kind, _ := object["kind"].(string)
+	return kind == "Secret" && projectID != ""
 }

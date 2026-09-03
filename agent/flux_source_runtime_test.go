@@ -86,6 +86,38 @@ func TestApplyFluxSourceCreatesProjectKustomization(t *testing.T) {
 	}
 }
 
+func TestApplyFluxSourceAdoptsOnlySafeLegacyProjectResources(t *testing.T) {
+	patched := map[string]bool{}
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method == http.MethodGet {
+			switch r.URL.Path {
+			case "/api/v1/namespaces/flux-system/secrets/checkout-gitops-auth":
+				_, _ = w.Write([]byte(`{"type":"kubernetes.io/basic-auth","metadata":{"labels":{}}}`))
+			case "/apis/source.toolkit.fluxcd.io/v1/namespaces/flux-system/gitrepositories/checkout-gitops":
+				_, _ = w.Write([]byte(`{"metadata":{"labels":{"app.kubernetes.io/managed-by":"envplane","envplane.io/project":"checkout"}}}`))
+			default:
+				w.WriteHeader(http.StatusNotFound)
+			}
+			return
+		}
+		if r.Method != http.MethodPatch {
+			t.Fatalf("method = %s", r.Method)
+		}
+		patched[r.URL.Path] = true
+		w.WriteHeader(http.StatusCreated)
+	}))
+	defer server.Close()
+
+	source := NewKubernetesNamespaceSource(server.URL, "agent-token", "", nil, server.Client())
+	command := domain.AgentFluxSourceCommand{ProjectID: "checkout", Namespace: "flux-system", GitRepositoryName: "checkout-gitops", CredentialSecretName: "checkout-gitops-auth", KustomizationName: "checkout-prs", KustomizationPath: "clusters/dev/apps/checkout", RepositoryURL: "https://gitlab.com/envplane/gitops.git", Branch: "main"}
+	if err := source.applyFluxSource(context.Background(), command, fluxSourceCredential{Username: "git", Password: "token"}); err != nil {
+		t.Fatalf("adopt safe legacy source: %v", err)
+	}
+	if len(patched) != 3 {
+		t.Fatalf("patched resources = %#v", patched)
+	}
+}
+
 func mapsKeys(values map[string]map[string]any) string {
 	keys := make([]string, 0, len(values))
 	for key := range values {
