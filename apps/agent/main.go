@@ -74,7 +74,7 @@ func runAgent(logger *slog.Logger) {
 		os.Exit(1)
 	}
 	go clusteragent.RunSecretMaterializationCommands(ctx, cfg, reporter, materializer, logger)
-	go clusteragent.RunFluxSourceCommands(ctx, cfg, reporter, source)
+	go clusteragent.RunFluxSourceCommands(ctx, cfg, reporter, source, logger)
 
 	logger.Info("envplane agent started", "cluster_id", cfg.ClusterID, "agent_id", cfg.AgentID, "control_plane_url", cfg.ControlPlaneURL)
 	if err := watcher.Run(ctx); err != nil {

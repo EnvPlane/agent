@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"log/slog"
 	"net/http"
 	"net/url"
 	"strings"
@@ -79,14 +80,16 @@ func (r *HTTPStatusReporter) ReportFluxSourceResult(ctx context.Context, result 
 	return r.postJSONWithBearer(ctx, "/api/v1/agents/flux-sources/commands/"+url.PathEscape(result.CommandID)+"/result", result, strings.TrimSpace(token), "report Flux source result")
 }
 
-func RunFluxSourceCommands(ctx context.Context, cfg Config, reporter *HTTPStatusReporter, source *KubernetesNamespaceSource) {
+func RunFluxSourceCommands(ctx context.Context, cfg Config, reporter *HTTPStatusReporter, source *KubernetesNamespaceSource, logger *slog.Logger) {
 	if reporter == nil || source == nil {
 		return
 	}
 	ticker := time.NewTicker(2 * time.Second)
 	defer ticker.Stop()
 	for {
-		_ = runFluxSourceCommandOnce(ctx, cfg, reporter, source)
+		if err := runFluxSourceCommandOnce(ctx, cfg, reporter, source); err != nil && logger != nil {
+			logger.Warn("Flux source command failed", "error", err)
+		}
 		select {
 		case <-ctx.Done():
 			return
