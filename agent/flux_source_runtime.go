@@ -26,7 +26,7 @@ func (r *HTTPStatusReporter) FetchFluxSourceCommand(ctx context.Context, cfg Con
 	if err != nil {
 		return nil, err
 	}
-	req.Header.Set("Authorization", "Bearer "+r.Token())
+	req.Header.Set("Authorization", "Bearer "+strings.TrimSpace(cfg.AgentAuthToken))
 	resp, err := r.client.Do(req)
 	if err != nil {
 		return nil, err
@@ -54,7 +54,7 @@ func (r *HTTPStatusReporter) FetchFluxSourceCredential(ctx context.Context, cfg 
 	if err != nil {
 		return fluxSourceCredential{}, err
 	}
-	req.Header.Set("Authorization", "Bearer "+r.Token())
+	req.Header.Set("Authorization", "Bearer "+strings.TrimSpace(cfg.AgentAuthToken))
 	resp, err := r.client.Do(req)
 	if err != nil {
 		return fluxSourceCredential{}, err
@@ -73,8 +73,8 @@ func (r *HTTPStatusReporter) FetchFluxSourceCredential(ctx context.Context, cfg 
 	return credential, nil
 }
 
-func (r *HTTPStatusReporter) ReportFluxSourceResult(ctx context.Context, result domain.AgentFluxSourceResult) error {
-	return r.postJSONWithBearer(ctx, "/api/v1/agents/flux-sources/commands/"+url.PathEscape(result.CommandID)+"/result", result, r.Token(), "report Flux source result")
+func (r *HTTPStatusReporter) ReportFluxSourceResult(ctx context.Context, result domain.AgentFluxSourceResult, token string) error {
+	return r.postJSONWithBearer(ctx, "/api/v1/agents/flux-sources/commands/"+url.PathEscape(result.CommandID)+"/result", result, strings.TrimSpace(token), "report Flux source result")
 }
 
 func RunFluxSourceCommands(ctx context.Context, cfg Config, reporter *HTTPStatusReporter, source *KubernetesNamespaceSource) {
@@ -94,7 +94,9 @@ func RunFluxSourceCommands(ctx context.Context, cfg Config, reporter *HTTPStatus
 }
 
 func runFluxSourceCommandOnce(ctx context.Context, cfg Config, reporter *HTTPStatusReporter, source *KubernetesNamespaceSource) error {
-	cfg.AgentAuthToken = reporter.Token()
+	if token := strings.TrimSpace(reporter.Token()); token != "" {
+		cfg.AgentAuthToken = token
+	}
 	command, err := reporter.FetchFluxSourceCommand(ctx, cfg)
 	if err != nil || command == nil {
 		return err
@@ -107,7 +109,7 @@ func runFluxSourceCommandOnce(ctx context.Context, cfg Config, reporter *HTTPSta
 	if err != nil {
 		result.Status, result.ErrorCode = domain.FluxSourceCommandFailed, "apply_failed"
 	}
-	return reporter.ReportFluxSourceResult(ctx, result)
+	return reporter.ReportFluxSourceResult(ctx, result, cfg.AgentAuthToken)
 }
 
 func (s *KubernetesNamespaceSource) applyFluxSource(ctx context.Context, command domain.AgentFluxSourceCommand, credential fluxSourceCredential) error {
