@@ -32,7 +32,7 @@ func (r *HTTPStatusReporter) FetchFluxSourceCommand(ctx context.Context, cfg Con
 	if err != nil {
 		return nil, err
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 	if resp.StatusCode == http.StatusNoContent {
 		return nil, nil
 	}
@@ -61,7 +61,7 @@ func (r *HTTPStatusReporter) FetchFluxSourceCredential(ctx context.Context, cfg 
 	if err != nil {
 		return fluxSourceCredential{}, err
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 	if resp.StatusCode/100 != 2 {
 		body, _ := io.ReadAll(io.LimitReader(resp.Body, 4096))
 		return fluxSourceCredential{}, fmt.Errorf("fetch Flux source credential: status=%d body=%s", resp.StatusCode, strings.TrimSpace(string(body)))
@@ -146,7 +146,7 @@ func (s *KubernetesNamespaceSource) applyFluxObject(ctx context.Context, collect
 				} `json:"metadata"`
 			}
 			decodeErr := json.NewDecoder(response.Body).Decode(&existing)
-			response.Body.Close()
+			_ = response.Body.Close()
 			if decodeErr != nil {
 				return decodeErr
 			}
@@ -156,7 +156,7 @@ func (s *KubernetesNamespaceSource) applyFluxObject(ctx context.Context, collect
 				return fmt.Errorf("refuse to overwrite foreign Flux source resource")
 			}
 		} else {
-			response.Body.Close()
+			_ = response.Body.Close()
 			if response.StatusCode != http.StatusNotFound {
 				return fmt.Errorf("read Flux source: status=%d", response.StatusCode)
 			}
@@ -181,7 +181,7 @@ func (s *KubernetesNamespaceSource) applyFluxObject(ctx context.Context, collect
 	if err != nil {
 		return err
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 	if resp.StatusCode/100 != 2 {
 		raw, _ := io.ReadAll(io.LimitReader(resp.Body, 4096))
 		return fmt.Errorf("apply Flux source: status=%d body=%s", resp.StatusCode, strings.TrimSpace(string(raw)))
