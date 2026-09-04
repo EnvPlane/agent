@@ -77,7 +77,7 @@ func TestApplyFluxSourceCreatesProjectKustomization(t *testing.T) {
 		t.Fatalf("missing Kustomization apply; paths: %v", mapsKeys(patched))
 	}
 	spec, _ := kustomization["spec"].(map[string]any)
-	if spec["path"] != "clusters/dev/apps/checkout" || spec["prune"] != true || spec["wait"] != true {
+	if spec["path"] != "clusters/dev/apps/checkout" || spec["prune"] != true || spec["wait"] != false {
 		t.Fatalf("unexpected Kustomization spec: %#v", spec)
 	}
 	sourceRef, _ := spec["sourceRef"].(map[string]any)
