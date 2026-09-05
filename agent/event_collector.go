@@ -4,18 +4,22 @@ import (
 	"context"
 	"sort"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/envplane/contracts/domain"
 )
 
 type EventCollector struct {
-	source EventSource
-	limit  int
+	source  EventSource
+	limit   int
+	mu      sync.Mutex
+	sent    map[string]map[string]struct{}
+	pending map[string]map[string]struct{}
 }
 
 func NewEventCollector(source EventSource) *EventCollector {
-	return &EventCollector{source: source, limit: 50}
+	return &EventCollector{source: source, limit: 50, sent: make(map[string]map[string]struct{}), pending: make(map[string]map[string]struct{})}
 }
 
 func (c *EventCollector) Collect(ctx context.Context, namespace string) ([]domain.KubernetesEvent, error) {
@@ -23,7 +27,49 @@ func (c *EventCollector) Collect(ctx context.Context, namespace string) ([]domai
 	if err != nil {
 		return nil, err
 	}
-	return BuildEnvironmentEvents(events, c.limit), nil
+	items := BuildEnvironmentEvents(events, c.limit)
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	unsent := make([]domain.KubernetesEvent, 0, len(items))
+	for _, item := range items {
+		key := eventKey(item)
+		if _, ok := c.sent[namespace][key]; ok {
+			continue
+		}
+		if _, ok := c.pending[namespace][key]; ok {
+			continue
+		}
+		if c.pending[namespace] == nil {
+			c.pending[namespace] = make(map[string]struct{})
+		}
+		c.pending[namespace][key] = struct{}{}
+		unsent = append(unsent, item)
+	}
+	return unsent, nil
+}
+
+// MarkReported records events that the control plane accepted, so future
+// resyncs do not emit them again.
+func (c *EventCollector) MarkReported(namespace string, events []domain.KubernetesEvent) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	if c.sent[namespace] == nil {
+		c.sent[namespace] = make(map[string]struct{})
+	}
+	for _, event := range events {
+		key := eventKey(event)
+		delete(c.pending[namespace], key)
+		c.sent[namespace][key] = struct{}{}
+	}
+}
+
+// Release returns undelivered events to the next collection attempt.
+func (c *EventCollector) Release(namespace string, events []domain.KubernetesEvent) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	for _, event := range events {
+		delete(c.pending[namespace], eventKey(event))
+	}
 }
 
 func BuildEnvironmentEvents(events []KubernetesEvent, limit int) []domain.KubernetesEvent {
@@ -83,4 +129,11 @@ func eventTimestamp(event domain.KubernetesEvent) time.Time {
 		return event.LastSeen
 	}
 	return event.FirstSeen
+}
+
+func eventKey(event domain.KubernetesEvent) string {
+	if uid := strings.TrimSpace(event.UID); uid != "" {
+		return uid
+	}
+	return strings.Join([]string{event.Namespace, event.Type, event.Reason, event.Message, event.InvolvedKind, event.InvolvedName, eventTimestamp(event).UTC().Format(time.RFC3339Nano)}, "\x00")
 }

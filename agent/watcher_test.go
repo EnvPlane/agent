@@ -213,6 +213,12 @@ func TestNamespaceWatcherReportsKubernetesEvents(t *testing.T) {
 	if len(report.events) != 1 || report.events[0].Reason != "FailedScheduling" {
 		t.Fatalf("events = %#v", report.events)
 	}
+	if err := watcher.SyncOnce(context.Background()); err != nil {
+		t.Fatalf("second sync once: %v", err)
+	}
+	if len(reporter.eventReports) != 1 {
+		t.Fatalf("event reports after unchanged resync = %d, want 1", len(reporter.eventReports))
+	}
 }
 
 func TestBuildNamespaceStatusReportMapsDeletionEvent(t *testing.T) {

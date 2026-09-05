@@ -67,6 +67,35 @@ func TestEventCollectorUsesKubernetesSource(t *testing.T) {
 	}
 }
 
+func TestEventCollectorDeduplicatesReportedEventsAndRetriesUndeliveredEvents(t *testing.T) {
+	source := &fakeEventSource{events: []KubernetesEvent{{
+		Metadata:      EventMetadata{UID: "event-1", Namespace: "envplane-pr-kan-404"},
+		Reason:        "BackOff",
+		Message:       "Back-off restarting failed container",
+		LastTimestamp: "2026-05-01T10:00:00Z",
+	}}}
+	collector := NewEventCollector(source)
+
+	first, err := collector.Collect(context.Background(), "envplane-pr-kan-404")
+	if err != nil || len(first) != 1 {
+		t.Fatalf("first collection = %#v, %v", first, err)
+	}
+	second, err := collector.Collect(context.Background(), "envplane-pr-kan-404")
+	if err != nil || len(second) != 0 {
+		t.Fatalf("pending collection = %#v, %v", second, err)
+	}
+	collector.Release("envplane-pr-kan-404", first)
+	retry, err := collector.Collect(context.Background(), "envplane-pr-kan-404")
+	if err != nil || len(retry) != 1 {
+		t.Fatalf("retry collection = %#v, %v", retry, err)
+	}
+	collector.MarkReported("envplane-pr-kan-404", retry)
+	third, err := collector.Collect(context.Background(), "envplane-pr-kan-404")
+	if err != nil || len(third) != 0 {
+		t.Fatalf("reported collection = %#v, %v", third, err)
+	}
+}
+
 func TestEventCollectorLimitsEvents(t *testing.T) {
 	raw := make([]KubernetesEvent, 0, 55)
 	for i := 0; i < 55; i++ {

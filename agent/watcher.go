@@ -44,6 +44,7 @@ type batchEventReporter interface {
 
 type EnvironmentEventsReport struct {
 	EnvironmentID string
+	Namespace     string
 	Events        []domain.KubernetesEvent
 }
 
@@ -185,10 +186,10 @@ func (w *NamespaceWatcher) SyncOnce(ctx context.Context) error {
 					}
 					eventSink := func(environmentID string, events []domain.KubernetesEvent) error {
 						if !useEventBatch {
-							return w.reporter.ReportEvents(ctx, environmentID, events)
+							return w.reportCollectedEvents(ctx, namespace.Metadata.Name, environmentID, events)
 						}
 						batchMu.Lock()
-						batchEvents = append(batchEvents, EnvironmentEventsReport{EnvironmentID: environmentID, Events: events})
+						batchEvents = append(batchEvents, EnvironmentEventsReport{EnvironmentID: environmentID, Namespace: namespace.Metadata.Name, Events: events})
 						batchMu.Unlock()
 						return nil
 					}
@@ -228,8 +229,17 @@ func (w *NamespaceWatcher) SyncOnce(ctx context.Context) error {
 		}
 	}
 	if useEventBatch && len(batchEvents) > 0 {
-		if err := eventBatch.ReportEventsBatch(ctx, batchEvents); err != nil && firstErr == nil {
-			firstErr = err
+		if err := eventBatch.ReportEventsBatch(ctx, batchEvents); err != nil {
+			for _, report := range batchEvents {
+				w.eventCollector.Release(report.Namespace, report.Events)
+			}
+			if firstErr == nil {
+				firstErr = err
+			}
+		} else {
+			for _, report := range batchEvents {
+				w.eventCollector.MarkReported(report.Namespace, report.Events)
+			}
 		}
 	}
 	var syncErr = firstErr
@@ -243,7 +253,7 @@ func (w *NamespaceWatcher) reportEvent(ctx context.Context, eventType string, na
 		err = w.reportEventWithStatus(ctx, eventType, namespace, func(report NamespaceStatusReport) error {
 			return w.reporter.ReportNamespaceStatus(ctx, report)
 		}, func(environmentID string, events []domain.KubernetesEvent) error {
-			return w.reporter.ReportEvents(ctx, environmentID, events)
+			return w.reportCollectedEvents(ctx, namespace.Metadata.Name, environmentID, events)
 		})
 		if err == nil || ctx.Err() != nil || attempt == watchReportAttempts {
 			if err != nil && strings.EqualFold(eventType, "DELETED") {
@@ -329,7 +339,7 @@ func (w *NamespaceWatcher) drainTerminalEventQueue(ctx context.Context) {
 			continue
 		}
 		if err := w.reportEventWithStatus(ctx, queued.Type, queued.Namespace, func(report NamespaceStatusReport) error { return w.reporter.ReportNamespaceStatus(ctx, report) }, func(environmentID string, events []domain.KubernetesEvent) error {
-			return w.reporter.ReportEvents(ctx, environmentID, events)
+			return w.reportCollectedEvents(ctx, queued.Namespace.Metadata.Name, environmentID, events)
 		}); err != nil {
 			continue
 		}
@@ -377,6 +387,8 @@ func (w *NamespaceWatcher) reportEventWithStatus(ctx context.Context, eventType 
 		events, err := w.eventCollector.Collect(ctx, namespace.Metadata.Name)
 		if err != nil {
 			w.logger.Error("kubernetes events collection failed", "environment", report.EnvironmentID, "namespace", namespace.Metadata.Name, "error", err)
+		} else if len(events) == 0 {
+			w.logger.Debug("no new kubernetes events", "environment", report.EnvironmentID, "namespace", namespace.Metadata.Name)
 		} else if err := reportEvents(report.EnvironmentID, events); err != nil {
 			w.logger.Error("kubernetes events report failed", "environment", report.EnvironmentID, "namespace", namespace.Metadata.Name, "error", err)
 		} else {
@@ -384,6 +396,16 @@ func (w *NamespaceWatcher) reportEventWithStatus(ctx context.Context, eventType 
 		}
 	}
 	w.logger.Info("namespace status reported", "environment", report.EnvironmentID, "namespace", report.Namespace, "status", report.Status, "event", eventType)
+	return nil
+}
+
+func (w *NamespaceWatcher) reportCollectedEvents(ctx context.Context, namespace, environmentID string, events []domain.KubernetesEvent) error {
+	err := w.reporter.ReportEvents(ctx, environmentID, events)
+	if err != nil {
+		w.eventCollector.Release(namespace, events)
+		return err
+	}
+	w.eventCollector.MarkReported(namespace, events)
 	return nil
 }
 
