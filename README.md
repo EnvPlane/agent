@@ -37,6 +37,23 @@ docker build -t envplane-agent:dev .
 Do not commit kubeconfigs, bootstrap tokens, cloud credentials, or production
 values. Use short-lived credentials and managed Kubernetes Secrets.
 
+### Runtime token persistence
+
+The Agent persists its runtime bearer token to
+`ENVPLANE_AGENT_AUTH_TOKEN_FILE` after registration so it can restart without
+consuming the one-time bootstrap token. The token is stored as plaintext with
+file mode `0600` in a directory with mode `0700`. This is an accepted
+operational risk, not encryption at rest: an actor able to read the Pod volume,
+a PersistentVolume snapshot, or the worker-node filesystem can recover the
+token.
+
+Deploy the token path on a dedicated non-shared volume, do not include it in
+backups or diagnostic bundles, and restrict privileged Pod and node access.
+Control-plane operators should issue short-lived runtime tokens and support
+prompt revocation and re-registration to limit exposure after a suspected
+volume compromise. Encryption of the token file would require a separately
+protected key and is intentionally outside the current Agent credential model.
+
 ## Status
 
 Private EnvPlane platform component under active development.
