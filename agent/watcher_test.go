@@ -234,6 +234,36 @@ func TestBuildNamespaceStatusReportMapsDeletionEvent(t *testing.T) {
 	}
 }
 
+func TestBuildNamespaceStatusReportRequiresLabelWhenConfigured(t *testing.T) {
+	labelled := Namespace{Metadata: NamespaceMetadata{Name: "custom-namespace", Labels: map[string]string{environmentIDLabel: "labelled"}}, Status: NamespaceStatus{Phase: "Active"}}
+	for _, requireLabel := range []bool{false, true} {
+		report, ok := BuildNamespaceStatusReportWithPolicy("SYNC", labelled, requireLabel)
+		if !ok || report.EnvironmentID != "labelled" {
+			t.Fatalf("labelled report requireLabel=%t = %#v, %t", requireLabel, report, ok)
+		}
+	}
+
+	legacy := Namespace{Metadata: NamespaceMetadata{Name: "envplane-pr-legacy"}, Status: NamespaceStatus{Phase: "Active"}}
+	if report, ok := BuildNamespaceStatusReportWithPolicy("SYNC", legacy, true); ok || report.EnvironmentID != "" {
+		t.Fatalf("label-required legacy report = %#v, %t", report, ok)
+	}
+	if report, ok := BuildNamespaceStatusReportWithPolicy("SYNC", legacy, false); !ok || report.EnvironmentID != "legacy" {
+		t.Fatalf("legacy fallback report = %#v, %t", report, ok)
+	}
+}
+
+func TestNamespaceWatcherWarnsWhenUsingLegacyEnvironmentBinding(t *testing.T) {
+	var logs bytes.Buffer
+	watcher := NewNamespaceWatcher(&fakeNamespaceSource{}, &fakeStatusReporter{}, time.Second, slog.New(slog.NewJSONHandler(&logs, nil)))
+	legacy := Namespace{Metadata: NamespaceMetadata{Name: "envplane-pr-legacy"}, Status: NamespaceStatus{Phase: "Active"}}
+	if err := watcher.reportEventWithStatus(context.Background(), "SYNC", legacy, func(NamespaceStatusReport) error { return nil }, func(string, []domain.KubernetesEvent) error { return nil }); err != nil {
+		t.Fatalf("report legacy namespace: %v", err)
+	}
+	if output := logs.String(); !strings.Contains(output, "legacy namespace environment binding used") || !strings.Contains(output, "envplane-pr-legacy") || !strings.Contains(output, "legacy") {
+		t.Fatalf("legacy binding warning = %q", output)
+	}
+}
+
 func TestNamespaceWatcherReportsFluxStatus(t *testing.T) {
 	source := &fakeNamespaceSource{
 		namespaces: []Namespace{

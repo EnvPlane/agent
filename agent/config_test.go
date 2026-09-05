@@ -144,6 +144,13 @@ func TestConfigFromEnvTreatsEmptyNamespaceSelectorAsAllNamespaces(t *testing.T) 
 	}
 }
 
+func TestConfigFromEnvReadsRequireEnvironmentLabel(t *testing.T) {
+	t.Setenv("ENVPLANE_REQUIRE_ENVIRONMENT_LABEL", "true")
+	if !ConfigFromEnv().RequireEnvironmentLabel {
+		t.Fatal("require environment label must be enabled from configuration")
+	}
+}
+
 func TestConfigFromEnvDisablesSecretDiscoveryUnlessExplicitlyEnabled(t *testing.T) {
 	t.Setenv("ENVPLANE_DISCOVERY_READ_SECRETS", "")
 	if ConfigFromEnv().ReadSecrets {

@@ -23,14 +23,15 @@ const (
 )
 
 type NamespaceWatcher struct {
-	source           NamespaceSource
-	reporter         StatusReporter
-	collector        *DeploymentStatusCollector
-	eventCollector   *EventCollector
-	fluxCollector    *FluxStatusCollector
-	resyncInterval   time.Duration
-	logger           *slog.Logger
-	terminalQueueDir string
+	source                  NamespaceSource
+	reporter                StatusReporter
+	collector               *DeploymentStatusCollector
+	eventCollector          *EventCollector
+	fluxCollector           *FluxStatusCollector
+	resyncInterval          time.Duration
+	logger                  *slog.Logger
+	terminalQueueDir        string
+	requireEnvironmentLabel bool
 }
 
 type batchStatusReporter interface {
@@ -88,6 +89,12 @@ func NewNamespaceWatcherWithCollectors(source NamespaceSource, reporter StatusRe
 // events that remain undelivered after bounded retries.
 func (w *NamespaceWatcher) SetTerminalEventQueueDir(dir string) {
 	w.terminalQueueDir = strings.TrimSpace(dir)
+}
+
+// SetRequireEnvironmentLabel disables legacy namespace-name binding. New
+// installations should require the control-plane-owned environment label.
+func (w *NamespaceWatcher) SetRequireEnvironmentLabel(require bool) {
+	w.requireEnvironmentLabel = require
 }
 
 func (w *NamespaceWatcher) Run(ctx context.Context) error {
@@ -331,10 +338,13 @@ func (w *NamespaceWatcher) drainTerminalEventQueue(ctx context.Context) {
 }
 
 func (w *NamespaceWatcher) reportEventWithStatus(ctx context.Context, eventType string, namespace Namespace, reportStatus func(NamespaceStatusReport) error, reportEvents func(string, []domain.KubernetesEvent) error) error {
-	report, ok := BuildNamespaceStatusReport(eventType, namespace)
+	report, ok, legacyFallback := buildNamespaceStatusReport(eventType, namespace, w.requireEnvironmentLabel)
 	if !ok {
 		w.logger.Debug("namespace skipped", "namespace", namespace.Metadata.Name, "event", eventType)
 		return nil
+	}
+	if legacyFallback {
+		w.logger.Warn("legacy namespace environment binding used", "namespace", namespace.Metadata.Name, "environment", report.EnvironmentID)
 	}
 	if w.collector != nil && report.Status != domain.StatusTerminating && report.Status != domain.StatusTerminated {
 		workloadReport, err := w.collector.Collect(ctx, namespace.Metadata.Name)
@@ -391,12 +401,29 @@ func mergeNamespaceAndFluxStatus(namespaceStatus domain.EnvironmentStatus, fluxS
 }
 
 func BuildNamespaceStatusReport(eventType string, namespace Namespace) (NamespaceStatusReport, bool) {
+	report, ok, _ := buildNamespaceStatusReport(eventType, namespace, false)
+	return report, ok
+}
+
+// BuildNamespaceStatusReportWithPolicy allows callers to require the
+// control-plane-owned environment label instead of legacy name parsing.
+func BuildNamespaceStatusReportWithPolicy(eventType string, namespace Namespace, requireEnvironmentLabel bool) (NamespaceStatusReport, bool) {
+	report, ok, _ := buildNamespaceStatusReport(eventType, namespace, requireEnvironmentLabel)
+	return report, ok
+}
+
+func buildNamespaceStatusReport(eventType string, namespace Namespace, requireEnvironmentLabel bool) (NamespaceStatusReport, bool, bool) {
 	environmentID := strings.TrimSpace(namespace.Metadata.Labels[environmentIDLabel])
+	legacyFallback := false
 	if environmentID == "" {
+		if requireEnvironmentLabel {
+			return NamespaceStatusReport{}, false, false
+		}
 		environmentID = environmentIDFromNamespace(namespace.Metadata.Name)
+		legacyFallback = environmentID != ""
 	}
 	if environmentID == "" {
-		return NamespaceStatusReport{}, false
+		return NamespaceStatusReport{}, false, false
 	}
 
 	status := namespaceStatus(eventType, namespace)
@@ -407,7 +434,7 @@ func BuildNamespaceStatusReport(eventType string, namespace Namespace) (Namespac
 		Message:       namespaceStatusMessage(eventType, namespace, status),
 		EventType:     eventType,
 		Phase:         namespace.Status.Phase,
-	}, true
+	}, true, legacyFallback
 }
 
 func namespaceStatus(eventType string, namespace Namespace) domain.EnvironmentStatus {
