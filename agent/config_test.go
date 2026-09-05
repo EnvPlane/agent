@@ -14,7 +14,7 @@ func TestConfigFromEnvLoadsPersistedAgentAuthTokenFile(t *testing.T) {
 	if err := os.WriteFile(tokenPath, []byte("persisted-agent-auth-token\n"), 0o600); err != nil {
 		t.Fatalf("write token file: %v", err)
 	}
-	t.Setenv("ENVPLANE_CONTROL_PLANE_URL", "https://envplane.example")
+	t.Setenv("ENVPLANE_CONTROL_PLANE_URL", "https://envplane-control-plane.envplane.svc")
 	t.Setenv("ENVPLANE_CLUSTER_ID", "dev-us")
 	t.Setenv("ENVPLANE_AGENT_ID", "agent-1")
 	t.Setenv("ENVPLANE_AGENT_AUTH_TOKEN_FILE", tokenPath)
@@ -38,7 +38,7 @@ func TestConfigFromEnvLoadsPersistedAgentAuthTokenFile(t *testing.T) {
 }
 
 func TestConfigFromEnvLoadsKubernetesRateLimit(t *testing.T) {
-	t.Setenv("ENVPLANE_CONTROL_PLANE_URL", "https://envplane.example")
+	t.Setenv("ENVPLANE_CONTROL_PLANE_URL", "https://envplane-control-plane.envplane.svc")
 	t.Setenv("ENVPLANE_CLUSTER_ID", "dev-us")
 	t.Setenv("ENVPLANE_AGENT_ID", "agent-1")
 	t.Setenv("ENVPLANE_AGENT_REGISTRATION_TOKEN", "registration-token")
@@ -60,7 +60,7 @@ func TestConfigFromEnvLoadsLoadBalancerCapability(t *testing.T) {
 		t.Fatalf("load balancer capability = %q", got)
 	}
 	cfg := Config{
-		ControlPlaneURL:        "https://envplane.example",
+		ControlPlaneURL:        "https://envplane-control-plane.envplane.svc",
 		ClusterID:              "cluster-a",
 		AgentID:                "agent-a",
 		RegistrationToken:      "registration-token",
@@ -111,7 +111,7 @@ func TestConfigFromEnvUsesChartCompatiblePersistedAgentAuthTokenPath(t *testing.
 	if err := os.WriteFile(tokenPath, []byte("chart-persisted-agent-auth-token\n"), 0o600); err != nil {
 		t.Fatalf("write token file: %v", err)
 	}
-	t.Setenv("ENVPLANE_CONTROL_PLANE_URL", "https://envplane.example")
+	t.Setenv("ENVPLANE_CONTROL_PLANE_URL", "https://envplane-control-plane.envplane.svc")
 	t.Setenv("ENVPLANE_CLUSTER_ID", "dev-us")
 	t.Setenv("ENVPLANE_AGENT_ID", "agent-1")
 	t.Setenv("ENVPLANE_AGENT_AUTH_TOKEN_FILE", tokenPath)
@@ -217,6 +217,15 @@ func TestConfigAllowsSameClusterServiceHTTPWithoutInsecureOptIn(t *testing.T) {
 	}
 	if err := ValidateControlPlaneEndpoint("http://control-plane.example.test", "remote"); err == nil {
 		t.Fatal("remote HTTP must remain rejected")
+	}
+}
+
+func TestConfigRejectsExternalSameClusterControlPlaneEndpoint(t *testing.T) {
+	for _, endpointMode := range []string{"sameCluster", ""} {
+		err := ValidateControlPlaneEndpoint("http://attacker.example.com", endpointMode)
+		if err == nil || !strings.Contains(err.Error(), "Kubernetes Service DNS") {
+			t.Fatalf("same-cluster external endpoint mode=%q error=%v", endpointMode, err)
+		}
 	}
 }
 

@@ -185,9 +185,8 @@ func (c Config) Validate() error {
 	return nil
 }
 
-// validateControlPlaneEndpoint rejects host-only and cluster-local addresses
-// only when the chart declares a remote deployment. Same-cluster Agents use
-// Kubernetes Service DNS and are intentionally allowed to do so.
+// ValidateControlPlaneEndpoint enforces the deployment-specific control-plane
+// address policy before any Agent credential can be sent to the endpoint.
 func ValidateControlPlaneEndpoint(rawURL, endpointMode string) error {
 	return ValidateControlPlaneEndpointWithPolicy(rawURL, endpointMode, false)
 }
@@ -204,7 +203,11 @@ func ValidateControlPlaneEndpointWithPolicy(rawURL, endpointMode string, allowIn
 	if err != nil || (parsed.Scheme != "http" && parsed.Scheme != "https") || parsed.Hostname() == "" {
 		return fmt.Errorf("ENVPLANE_CONTROL_PLANE_URL must be an HTTP(S) URL")
 	}
-	if mode != "remote" {
+	if mode == "samecluster" {
+		host := strings.ToLower(strings.TrimSpace(parsed.Hostname()))
+		if !strings.HasSuffix(host, ".svc") && !strings.HasSuffix(host, ".svc.cluster.local") {
+			return fmt.Errorf("same-cluster ENVPLANE_CONTROL_PLANE_URL must use Kubernetes Service DNS ending in .svc or .svc.cluster.local")
+		}
 		return nil
 	}
 	if parsed.Scheme == "http" && !allowInsecure {
