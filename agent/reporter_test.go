@@ -199,6 +199,8 @@ func TestHTTPStatusReporterRegistersAgentAndSendsHeartbeat(t *testing.T) {
 	var paths []string
 	var register domain.AgentRegistrationRequest
 	var heartbeat domain.AgentHeartbeatRequest
+	var heartbeatBody []byte
+	var heartbeatAuthorization string
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		paths = append(paths, r.URL.Path)
 		switch r.URL.Path {
@@ -213,7 +215,13 @@ func TestHTTPStatusReporterRegistersAgentAndSendsHeartbeat(t *testing.T) {
 			_, _ = w.Write([]byte(`{"id":"dev-us","name":"dev-us","provider":"kubernetes","agentAuthToken":"agent-auth-token"}`))
 			return
 		case "/api/v1/agents/heartbeat":
-			if err := json.NewDecoder(r.Body).Decode(&heartbeat); err != nil {
+			heartbeatAuthorization = r.Header.Get("Authorization")
+			var err error
+			heartbeatBody, err = io.ReadAll(r.Body)
+			if err != nil {
+				t.Fatalf("read heartbeat: %v", err)
+			}
+			if err := json.Unmarshal(heartbeatBody, &heartbeat); err != nil {
 				t.Fatalf("decode heartbeat: %v", err)
 			}
 		default:
@@ -234,7 +242,7 @@ func TestHTTPStatusReporterRegistersAgentAndSendsHeartbeat(t *testing.T) {
 		HeartbeatInterval: 30 * time.Second,
 	}
 	capabilities := ClusterCapabilities{KubernetesVersion: "v1.30.1", Capabilities: []string{"apps-v1", "flux-helm-v2"}}
-	reporter := NewHTTPStatusReporterForAgent(server.URL, "agent-token", "dev-us", "agent-1", time.Second)
+	reporter := NewHTTPStatusReporterForAgent(server.URL, "agent-auth-token", "dev-us", "agent-1", time.Second)
 	agentAuthToken, err := reporter.RegisterAgent(context.Background(), cfg, capabilities)
 	if err != nil {
 		t.Fatalf("register agent: %v", err)
@@ -253,8 +261,11 @@ func TestHTTPStatusReporterRegistersAgentAndSendsHeartbeat(t *testing.T) {
 	if heartbeat.ClusterID != "dev-us" || heartbeat.Status != "online" {
 		t.Fatalf("heartbeat = %#v", heartbeat)
 	}
-	if heartbeat.AgentAuthToken != "agent-auth-token" {
-		t.Fatalf("heartbeat auth token = %#v", heartbeat)
+	if heartbeat.AgentAuthToken != "" || bytes.Contains(heartbeatBody, []byte("agentAuthToken")) || bytes.Contains(heartbeatBody, []byte("agent-auth-token")) {
+		t.Fatalf("heartbeat must not contain an agent auth token: %s", heartbeatBody)
+	}
+	if heartbeatAuthorization != "Bearer agent-auth-token" {
+		t.Fatalf("heartbeat authorization = %q", heartbeatAuthorization)
 	}
 	if heartbeat.CapabilityReport == nil || heartbeat.CapabilityReport.ConfigFingerprint != cfg.CapabilityConfigFingerprint() {
 		t.Fatalf("heartbeat must refresh the capability report with the config fingerprint: %#v", heartbeat)

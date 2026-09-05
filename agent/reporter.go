@@ -256,7 +256,6 @@ func (r *HTTPStatusReporter) ReportHeartbeatWithEndpointPreflight(ctx context.Co
 		ProjectID:                cfg.BootstrapProjectID,
 		ClusterID:                cfg.ClusterID,
 		AgentID:                  cfg.AgentID,
-		AgentAuthToken:           cfg.AgentAuthToken,
 		AgentVersion:             cfg.AgentVersion,
 		KubernetesVersion:        capabilities.KubernetesVersion,
 		Capabilities:             capabilities.Capabilities,
