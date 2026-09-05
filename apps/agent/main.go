@@ -187,7 +187,16 @@ func getenvCompat(legacy string) string {
 	return strings.TrimSpace(os.Getenv(legacy))
 }
 
-func ensureRuntimeAuth(ctx context.Context, cfg clusteragent.Config, reporter *clusteragent.HTTPStatusReporter, capabilities clusteragent.ClusterCapabilities, logger *slog.Logger) (clusteragent.Config, error) {
+type agentRegistrationReporter interface {
+	RegisterAgent(context.Context, clusteragent.Config, clusteragent.ClusterCapabilities) (string, error)
+}
+
+type runtimeAuthReporter interface {
+	agentRegistrationReporter
+	SetToken(string)
+}
+
+func ensureRuntimeAuth(ctx context.Context, cfg clusteragent.Config, reporter agentRegistrationReporter, capabilities clusteragent.ClusterCapabilities, logger *slog.Logger) (clusteragent.Config, error) {
 	if strings.TrimSpace(cfg.AgentAuthToken) != "" {
 		cfg.RegistrationToken = ""
 		logger.Info("agent using persisted auth token", "cluster_id", cfg.ClusterID, "agent_id", cfg.AgentID)
@@ -205,6 +214,24 @@ func ensureRuntimeAuth(ctx context.Context, cfg clusteragent.Config, reporter *c
 	}
 	cfg.AgentAuthToken = token
 	cfg.RegistrationToken = ""
+	return cfg, nil
+}
+
+func acquireResourceScan(scanRunning *atomic.Bool) bool {
+	return scanRunning.CompareAndSwap(false, true)
+}
+
+func recoverRuntimeAuth(ctx context.Context, cfg clusteragent.Config, reporter runtimeAuthReporter, capabilities clusteragent.ClusterCapabilities, logger *slog.Logger, bootstrapRegistrationToken string) (clusteragent.Config, error) {
+	if err := cfg.ClearPersistedAgentAuthToken(); err != nil {
+		return cfg, fmt.Errorf("clear stale agent auth token: %w", err)
+	}
+	cfg.AgentAuthToken = ""
+	cfg.RegistrationToken = bootstrapRegistrationToken
+	cfg, err := ensureRuntimeAuth(ctx, cfg, reporter, capabilities, logger)
+	if err != nil {
+		return cfg, err
+	}
+	reporter.SetToken(cfg.AgentAuthToken)
 	return cfg, nil
 }
 
@@ -238,14 +265,7 @@ func runHeartbeat(ctx context.Context, cfg clusteragent.Config, reporter *cluste
 					// registration claim, or rejected a stale runtime token. Drop only
 					// the persisted runtime token and immediately re-register from the
 					// mounted Secret; no operator edit or raw-token persistence is needed.
-					if clearErr := cfg.ClearPersistedAgentAuthToken(); clearErr != nil {
-						logger.Error("clear stale agent auth token", "error", clearErr)
-						recoveryCancel()
-						continue
-					}
-					cfg.AgentAuthToken = ""
-					cfg.RegistrationToken = bootstrapRegistrationToken
-					cfg, err = ensureRuntimeAuth(recoveryCtx, cfg, reporter, capabilities, logger)
+					cfg, err = recoverRuntimeAuth(recoveryCtx, cfg, reporter, capabilities, logger, bootstrapRegistrationToken)
 					recoveryCancel()
 					if err != nil {
 						logger.Error("agent fixture identity recovery registration failed", "cluster_id", cfg.ClusterID, "agent_id", cfg.AgentID, "error", err)
@@ -259,7 +279,7 @@ func runHeartbeat(ctx context.Context, cfg clusteragent.Config, reporter *cluste
 			}
 			cancel()
 			if preflight.Code == "passed" {
-				if scanRunning.CompareAndSwap(false, true) {
+				if acquireResourceScan(&scanRunning) {
 					clusteragent.SafeGo(logger, "resource scan", func() {
 						defer scanRunning.Store(false)
 						scanCtx, scanCancel := context.WithTimeout(ctx, 45*time.Second)
