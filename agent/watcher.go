@@ -102,9 +102,15 @@ func (w *NamespaceWatcher) Run(ctx context.Context) error {
 
 		watchDone := make(chan error, 1)
 		go func() {
-			watchDone <- w.source.WatchNamespaces(ctx, func(event NamespaceEvent) error {
-				return w.reportEvent(ctx, event.Type, event.Namespace)
-			})
+			var watchErr error
+			if RunSafely(w.logger, "namespace watch", func() {
+				watchErr = w.source.WatchNamespaces(ctx, func(event NamespaceEvent) error {
+					return w.reportEvent(ctx, event.Type, event.Namespace)
+				})
+			}) {
+				watchErr = fmt.Errorf("namespace watch panicked")
+			}
+			watchDone <- watchErr
 		}()
 
 		ticker := time.NewTicker(w.resyncInterval)
@@ -160,31 +166,40 @@ func (w *NamespaceWatcher) SyncOnce(ctx context.Context) error {
 		go func() {
 			defer wg.Done()
 			for namespace := range queue {
-				statusSink := func(report NamespaceStatusReport) error {
-					if !useBatch {
-						return w.reporter.ReportNamespaceStatus(ctx, report)
+				panicked := RunSafely(w.logger, "namespace sync worker "+namespace.Metadata.Name, func() {
+					statusSink := func(report NamespaceStatusReport) error {
+						if !useBatch {
+							return w.reporter.ReportNamespaceStatus(ctx, report)
+						}
+						batchMu.Lock()
+						batchReports = append(batchReports, report)
+						batchMu.Unlock()
+						return nil
 					}
-					batchMu.Lock()
-					batchReports = append(batchReports, report)
-					batchMu.Unlock()
-					return nil
-				}
-				eventSink := func(environmentID string, events []domain.KubernetesEvent) error {
-					if !useEventBatch {
-						return w.reporter.ReportEvents(ctx, environmentID, events)
+					eventSink := func(environmentID string, events []domain.KubernetesEvent) error {
+						if !useEventBatch {
+							return w.reporter.ReportEvents(ctx, environmentID, events)
+						}
+						batchMu.Lock()
+						batchEvents = append(batchEvents, EnvironmentEventsReport{EnvironmentID: environmentID, Events: events})
+						batchMu.Unlock()
+						return nil
 					}
-					batchMu.Lock()
-					batchEvents = append(batchEvents, EnvironmentEventsReport{EnvironmentID: environmentID, Events: events})
-					batchMu.Unlock()
-					return nil
-				}
-				if err := w.reportEventWithStatus(ctx, "SYNC", namespace, statusSink, eventSink); err != nil {
+					if err := w.reportEventWithStatus(ctx, "SYNC", namespace, statusSink, eventSink); err != nil {
+						errMu.Lock()
+						if firstErr == nil {
+							firstErr = err
+						}
+						errMu.Unlock()
+						w.logger.Error("namespace status report failed", "namespace", namespace.Metadata.Name, "error", err)
+					}
+				})
+				if panicked {
 					errMu.Lock()
 					if firstErr == nil {
-						firstErr = err
+						firstErr = fmt.Errorf("namespace sync worker panicked")
 					}
 					errMu.Unlock()
-					w.logger.Error("namespace status report failed", "namespace", namespace.Metadata.Name, "error", err)
 				}
 			}
 		}()

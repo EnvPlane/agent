@@ -1,8 +1,10 @@
 package agent
 
 import (
+	"bytes"
 	"context"
 	"errors"
+	"log/slog"
 	"os"
 	"path/filepath"
 	"strings"
@@ -87,6 +89,26 @@ func TestNamespaceWatcherReportsEnvNamespaceStatus(t *testing.T) {
 	}
 	if report.Status != domain.StatusReady {
 		t.Fatalf("status = %q", report.Status)
+	}
+}
+
+func TestNamespaceWatcherSyncOnceRecoversWorkerPanic(t *testing.T) {
+	var logs bytes.Buffer
+	reporter := &panicNamespaceReporter{}
+	watcher := NewNamespaceWatcher(&fakeNamespaceSource{namespaces: []Namespace{
+		{Metadata: NamespaceMetadata{Name: "envplane-pr-panic", Labels: map[string]string{environmentIDLabel: "panic"}}, Status: NamespaceStatus{Phase: "Active"}},
+		{Metadata: NamespaceMetadata{Name: "envplane-pr-healthy", Labels: map[string]string{environmentIDLabel: "healthy"}}, Status: NamespaceStatus{Phase: "Active"}},
+	}}, reporter, time.Second, slog.New(slog.NewJSONHandler(&logs, nil)))
+
+	err := watcher.SyncOnce(context.Background())
+	if err == nil || !strings.Contains(err.Error(), "panicked") {
+		t.Fatalf("sync panic error = %v", err)
+	}
+	if !reporter.reported("healthy") {
+		t.Fatal("healthy namespace was not processed after another worker panicked")
+	}
+	if output := logs.String(); !strings.Contains(output, "agent background task panicked") || !strings.Contains(output, "envplane-pr-panic") || !strings.Contains(output, "goroutine") {
+		t.Fatalf("panic log = %q", output)
 	}
 }
 
@@ -320,6 +342,40 @@ func TestNamespaceWatcherResyncsWhileNamespaceWatchIsActive(t *testing.T) {
 
 type fakeNamespaceSource struct {
 	namespaces []Namespace
+}
+
+type panicNamespaceReporter struct {
+	mu      sync.Mutex
+	reports []string
+}
+
+func (r *panicNamespaceReporter) ReportNamespaceStatus(_ context.Context, report NamespaceStatusReport) error {
+	if report.EnvironmentID == "panic" {
+		panic("unexpected namespace resource")
+	}
+	r.mu.Lock()
+	r.reports = append(r.reports, report.EnvironmentID)
+	r.mu.Unlock()
+	return nil
+}
+
+func (r *panicNamespaceReporter) ReportEvents(context.Context, string, []domain.KubernetesEvent) error {
+	return nil
+}
+
+func (r *panicNamespaceReporter) ReportFluxStatus(context.Context, string, domain.FluxStatus) error {
+	return nil
+}
+
+func (r *panicNamespaceReporter) reported(environmentID string) bool {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	for _, report := range r.reports {
+		if report == environmentID {
+			return true
+		}
+	}
+	return false
 }
 
 type blockingNamespaceSource struct {

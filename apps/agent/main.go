@@ -67,14 +67,20 @@ func runAgent(logger *slog.Logger) {
 		os.Exit(1)
 	}
 	reporter.SetToken(cfg.AgentAuthToken)
-	go runHeartbeat(ctx, cfg, reporter, source, logger, bootstrapRegistrationToken)
+	clusteragent.SafeGo(logger, "heartbeat", func() {
+		runHeartbeat(ctx, cfg, reporter, source, logger, bootstrapRegistrationToken)
+	})
 	materializer, err := clusteragent.NewSecretMaterializer(source, nil, nil)
 	if err != nil {
 		logger.Error("failed to initialise secret materializer", "error", err)
 		os.Exit(1)
 	}
-	go clusteragent.RunSecretMaterializationCommands(ctx, cfg, reporter, materializer, logger)
-	go clusteragent.RunFluxSourceCommands(ctx, cfg, reporter, source, logger)
+	clusteragent.SafeGo(logger, "secret materialization commands", func() {
+		clusteragent.RunSecretMaterializationCommands(ctx, cfg, reporter, materializer, logger)
+	})
+	clusteragent.SafeGo(logger, "Flux source commands", func() {
+		clusteragent.RunFluxSourceCommands(ctx, cfg, reporter, source, logger)
+	})
 
 	logger.Info("envplane agent started", "cluster_id", cfg.ClusterID, "agent_id", cfg.AgentID, "control_plane_url", cfg.ControlPlaneURL)
 	if err := watcher.Run(ctx); err != nil {
@@ -253,14 +259,14 @@ func runHeartbeat(ctx context.Context, cfg clusteragent.Config, reporter *cluste
 			cancel()
 			if preflight.Code == "passed" {
 				if scanRunning.CompareAndSwap(false, true) {
-					go func() {
+					clusteragent.SafeGo(logger, "resource scan", func() {
 						defer scanRunning.Store(false)
 						scanCtx, scanCancel := context.WithTimeout(ctx, 45*time.Second)
 						defer scanCancel()
 						if err := runResourceScanTick(scanCtx, cfg, reporter, source, logger); err != nil {
 							logger.Error("agent resource scan dispatch failed", "cluster_id", cfg.ClusterID, "agent_id", cfg.AgentID, "error", err)
 						}
-					}()
+					})
 				}
 			}
 		}
