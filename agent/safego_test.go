@@ -4,12 +4,30 @@ import (
 	"bytes"
 	"log/slog"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 )
 
+type lockedBuffer struct {
+	mu sync.Mutex
+	bytes.Buffer
+}
+
+func (b *lockedBuffer) Write(p []byte) (int, error) {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	return b.Buffer.Write(p)
+}
+
+func (b *lockedBuffer) String() string {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	return b.Buffer.String()
+}
+
 func TestSafeGoRecoversPanicAndRunsOtherTasks(t *testing.T) {
-	var logs bytes.Buffer
+	var logs lockedBuffer
 	logger := slog.New(slog.NewJSONHandler(&logs, nil))
 	finished := make(chan struct{})
 	SafeGo(logger, "panic-task", func() { panic("unexpected resource shape") })
