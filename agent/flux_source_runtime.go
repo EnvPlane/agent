@@ -118,6 +118,12 @@ func runFluxSourceCommandOnce(ctx context.Context, cfg Config, reporter *HTTPSta
 }
 
 func (s *KubernetesNamespaceSource) applyFluxSource(ctx context.Context, command domain.AgentFluxSourceCommand, credential fluxSourceCredential) error {
+	if err := s.validateWriteNamespace(command.Namespace); err != nil {
+		return err
+	}
+	if strings.TrimSpace(command.Namespace) != strings.TrimSpace(s.FluxNamespace()) {
+		return fmt.Errorf("Flux source namespace %q does not match configured Flux namespace %q", command.Namespace, s.FluxNamespace())
+	}
 	// Flux GitRepository credentials use the Kubernetes basic-auth key contract.
 	// Keeping the canonical Secret type also lets an upgraded Agent adopt the
 	// historical basic-auth Secret without an immutable-type apply conflict.

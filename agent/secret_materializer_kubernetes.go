@@ -98,7 +98,7 @@ func (s *KubernetesNamespaceSource) DeleteSecret(ctx context.Context, namespace,
 }
 
 func (s *KubernetesNamespaceSource) applyResource(ctx context.Context, resourcePath string, body map[string]any, apply SecretApply) error {
-	if !s.allowedNamespace(apply.Namespace) {
+	if err := s.validateWriteNamespace(apply.Namespace); err != nil {
 		return ErrSecretNotFound
 	}
 	if strings.TrimSpace(apply.Namespace) == "" || strings.TrimSpace(apply.Name) == "" || strings.TrimSpace(apply.FieldManager) == "" || strings.TrimSpace(apply.IdempotencyKey) == "" {

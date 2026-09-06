@@ -90,6 +90,24 @@ func TestApplyFluxSourceCreatesProjectKustomization(t *testing.T) {
 	}
 }
 
+func TestApplyFluxSourceRejectsNamespaceOutsideAgentScopeBeforeHTTP(t *testing.T) {
+	requests := 0
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		requests++
+		t.Fatalf("unexpected Kubernetes request: %s %s", r.Method, r.URL.Path)
+	}))
+	defer server.Close()
+
+	source := NewKubernetesNamespaceSource(server.URL, "agent-token", "", []string{"flux-system"}, server.Client())
+	command := domain.AgentFluxSourceCommand{ProjectID: "checkout", Namespace: "tenant-b", GitRepositoryName: "checkout-gitops", CredentialSecretName: "checkout-gitops-auth", KustomizationName: "checkout-prs"}
+	if err := source.applyFluxSource(context.Background(), command, fluxSourceCredential{Username: "git", Password: "token"}); err == nil {
+		t.Fatal("expected Flux source apply to reject an unapproved namespace")
+	}
+	if requests != 0 {
+		t.Fatalf("Kubernetes requests = %d, want 0", requests)
+	}
+}
+
 func TestApplyFluxSourceAdoptsOnlySafeLegacyProjectResources(t *testing.T) {
 	patched := map[string]bool{}
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {

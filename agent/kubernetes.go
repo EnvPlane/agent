@@ -875,6 +875,13 @@ func (s *KubernetesNamespaceSource) allowedNamespace(name string) bool {
 	return ok
 }
 
+func (s *KubernetesNamespaceSource) validateWriteNamespace(name string) error {
+	if strings.TrimSpace(name) == "" || !s.allowedNamespace(name) {
+		return fmt.Errorf("namespace %q is not allowed for agent writes", name)
+	}
+	return nil
+}
+
 func (s *KubernetesNamespaceSource) isExcludedNamespace(name string) bool {
 	_, ok := s.excluded[strings.TrimSpace(name)]
 	return ok
