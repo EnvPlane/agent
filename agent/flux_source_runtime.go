@@ -118,12 +118,16 @@ func runFluxSourceCommandOnce(ctx context.Context, cfg Config, reporter *HTTPSta
 }
 
 func (s *KubernetesNamespaceSource) applyFluxSource(ctx context.Context, command domain.AgentFluxSourceCommand, credential fluxSourceCredential) error {
-	if err := s.validateWriteNamespace(command.Namespace); err != nil {
-		return err
-	}
-	if strings.TrimSpace(command.Namespace) != strings.TrimSpace(s.FluxNamespace()) {
+	fluxNamespace := strings.TrimSpace(s.FluxNamespace())
+	if strings.TrimSpace(command.Namespace) != fluxNamespace {
 		return fmt.Errorf("flux source namespace %q does not match configured Flux namespace %q", command.Namespace, s.FluxNamespace())
 	}
+	// A project Agent's workload allowlist intentionally covers only its base
+	// and preview namespaces. Flux source materialization is different: it is a
+	// narrowly scoped write to the separately configured Flux namespace, backed
+	// by a Role limited to this project's named source resources. Requiring the
+	// workload allowlist here would make that Role unusable without granting the
+	// Agent broad workload access to flux-system.
 	// Flux GitRepository credentials use the Kubernetes basic-auth key contract.
 	// Keeping the canonical Secret type also lets an upgraded Agent adopt the
 	// historical basic-auth Secret without an immutable-type apply conflict.

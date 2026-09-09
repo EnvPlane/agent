@@ -108,6 +108,39 @@ func TestApplyFluxSourceRejectsNamespaceOutsideAgentScopeBeforeHTTP(t *testing.T
 	}
 }
 
+func TestApplyFluxSourceAllowsConfiguredFluxNamespaceOutsideWorkloadAllowlist(t *testing.T) {
+	patched := map[string]map[string]any{}
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method == http.MethodGet {
+			w.WriteHeader(http.StatusNotFound)
+			return
+		}
+		if r.Method != http.MethodPatch {
+			t.Fatalf("method = %s", r.Method)
+		}
+		var object map[string]any
+		if err := json.NewDecoder(r.Body).Decode(&object); err != nil {
+			t.Fatalf("decode apply object: %v", err)
+		}
+		patched[r.URL.Path] = object
+		w.WriteHeader(http.StatusCreated)
+	}))
+	defer server.Close()
+
+	source := NewKubernetesNamespaceSource(server.URL, "agent-token", "", []string{"app-backend", "envplane-pr-123"}, server.Client())
+	source.fluxNS = "flux-system"
+	command := domain.AgentFluxSourceCommand{
+		ProjectID: "checkout", Namespace: "flux-system", GitRepositoryName: "checkout-gitops", CredentialSecretName: "checkout-gitops-auth",
+		KustomizationName: "checkout-prs", KustomizationPath: "clusters/local", RepositoryURL: "https://gitlab.com/envplane/gitops.git", Branch: "main",
+	}
+	if err := source.applyFluxSource(context.Background(), command, fluxSourceCredential{Username: "git", Password: "token"}); err != nil {
+		t.Fatalf("apply configured Flux namespace: %v", err)
+	}
+	if _, ok := patched["/apis/kustomize.toolkit.fluxcd.io/v1/namespaces/flux-system/kustomizations/checkout-prs"]; !ok {
+		t.Fatalf("missing Flux Kustomization apply: %v", mapsKeys(patched))
+	}
+}
+
 func TestApplyFluxSourceAdoptsOnlySafeLegacyProjectResources(t *testing.T) {
 	patched := map[string]bool{}
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
