@@ -322,7 +322,9 @@ func isAgentAuthTokenNotIssuedError(err error) bool {
 }
 
 func isStaleAgentAuthTokenMessage(message string) bool {
-	return strings.Contains(message, "auth token is not issued") || strings.Contains(message, "invalid api token")
+	return strings.Contains(message, "auth token is not issued") ||
+		strings.Contains(message, "invalid api token") ||
+		strings.Contains(message, "auth token is expired")
 }
 
 func runResourceScanTick(ctx context.Context, cfg clusteragent.Config, reporter *clusteragent.HTTPStatusReporter, source *clusteragent.KubernetesNamespaceSource, logger *slog.Logger) error {

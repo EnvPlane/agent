@@ -142,6 +142,13 @@ func TestIsAgentAuthTokenNotIssuedErrorRecognizesInvalidAPIToken(t *testing.T) {
 	}
 }
 
+func TestIsAgentAuthTokenNotIssuedErrorRecognizesExpiredRuntimeToken(t *testing.T) {
+	err := errors.New(`report heartbeat failed: status=401 body={"error":"runtime auth token is expired"}`)
+	if !isAgentAuthTokenNotIssuedError(err) {
+		t.Fatal("expected expired runtime token response to trigger runtime auth recovery")
+	}
+}
+
 func TestIsSameClusterIdentityReissuedErrorRecognizesRecoveryCode(t *testing.T) {
 	err := &clusteragent.APIError{Status: 401, Code: "same_cluster_identity_reissued", Message: "chart-managed agent identity was reissued; retry registration"}
 	if !isSameClusterIdentityReissuedError(err) {
