@@ -92,6 +92,30 @@ func TestNamespaceWatcherReportsEnvNamespaceStatus(t *testing.T) {
 	}
 }
 
+func TestNamespaceWatcherReportsTerminatedWhenPreviouslyObservedNamespaceDisappears(t *testing.T) {
+	source := &fakeNamespaceSource{namespaces: []Namespace{{
+		Metadata: NamespaceMetadata{Name: "envplane-pr-removed", Labels: map[string]string{environmentIDLabel: "removed"}},
+		Status:   NamespaceStatus{Phase: "Active"},
+	}}}
+	reporter := &fakeStatusReporter{}
+	watcher := NewNamespaceWatcher(source, reporter, time.Second, nil)
+
+	if err := watcher.SyncOnce(context.Background()); err != nil {
+		t.Fatalf("initial sync: %v", err)
+	}
+	source.namespaces = nil
+	if err := watcher.SyncOnce(context.Background()); err != nil {
+		t.Fatalf("sync after namespace removal: %v", err)
+	}
+	if len(reporter.reports) != 2 {
+		t.Fatalf("reports = %d, want ready and terminated", len(reporter.reports))
+	}
+	terminal := reporter.reports[1]
+	if terminal.EnvironmentID != "removed" || terminal.Status != domain.StatusTerminated {
+		t.Fatalf("terminal report = %#v", terminal)
+	}
+}
+
 func TestNamespaceWatcherSyncOnceRecoversWorkerPanic(t *testing.T) {
 	var logs bytes.Buffer
 	reporter := &panicNamespaceReporter{}

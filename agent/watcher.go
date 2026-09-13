@@ -32,6 +32,8 @@ type NamespaceWatcher struct {
 	logger                  *slog.Logger
 	terminalQueueDir        string
 	requireEnvironmentLabel bool
+	seenNamespaces          map[string]Namespace
+	seenNamespacesMu        sync.Mutex
 }
 
 type batchStatusReporter interface {
@@ -83,6 +85,7 @@ func NewNamespaceWatcherWithCollectors(source NamespaceSource, reporter StatusRe
 		fluxCollector:  fluxCollector,
 		resyncInterval: resyncInterval,
 		logger:         logger,
+		seenNamespaces: make(map[string]Namespace),
 	}
 }
 
@@ -151,6 +154,9 @@ func (w *NamespaceWatcher) SyncOnce(ctx context.Context) error {
 	w.drainTerminalEventQueue(ctx)
 	namespaces, err := w.source.ListNamespaces(ctx)
 	if err != nil {
+		return err
+	}
+	if err := w.reportNamespacesMissingSinceLastSync(ctx, namespaces); err != nil {
 		return err
 	}
 	workers := len(namespaces)
@@ -244,6 +250,36 @@ func (w *NamespaceWatcher) SyncOnce(ctx context.Context) error {
 	}
 	var syncErr = firstErr
 	return syncErr
+}
+
+// reportNamespacesMissingSinceLastSync closes the gap between watch events and
+// periodic discovery. A namespace can disappear while the watch is restarting;
+// without this fallback the control plane never receives the terminal status
+// and a deleted environment remains stuck in Terminating.
+func (w *NamespaceWatcher) reportNamespacesMissingSinceLastSync(ctx context.Context, namespaces []Namespace) error {
+	current := make(map[string]Namespace, len(namespaces))
+	for _, namespace := range namespaces {
+		if _, ok, _ := buildNamespaceStatusReport("SYNC", namespace, w.requireEnvironmentLabel); ok {
+			current[namespace.Metadata.Name] = namespace
+		}
+	}
+
+	w.seenNamespacesMu.Lock()
+	missing := make([]Namespace, 0)
+	for name, namespace := range w.seenNamespaces {
+		if _, found := current[name]; !found {
+			missing = append(missing, namespace)
+		}
+	}
+	w.seenNamespaces = current
+	w.seenNamespacesMu.Unlock()
+
+	for _, namespace := range missing {
+		if err := w.reportEvent(ctx, "DELETED", namespace); err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 func (w *NamespaceWatcher) reportEvent(ctx context.Context, eventType string, namespace Namespace) error {
