@@ -149,6 +149,13 @@ func TestIsAgentAuthTokenNotIssuedErrorRecognizesExpiredRuntimeToken(t *testing.
 	}
 }
 
+func TestIsAgentAuthTokenNotIssuedErrorRecognizesMissingRuntimeCredential(t *testing.T) {
+	err := errors.New(`report heartbeat failed: status=401 body={"error":"missing runtime auth credential: agent auth token is not configured"}`)
+	if !isAgentAuthTokenNotIssuedError(err) {
+		t.Fatal("expected missing runtime credential response to trigger runtime auth recovery")
+	}
+}
+
 func TestIsSameClusterIdentityReissuedErrorRecognizesRecoveryCode(t *testing.T) {
 	err := &clusteragent.APIError{Status: 401, Code: "same_cluster_identity_reissued", Message: "chart-managed agent identity was reissued; retry registration"}
 	if !isSameClusterIdentityReissuedError(err) {
