@@ -3,6 +3,7 @@ package agent
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -28,6 +29,26 @@ func TestFluxSourceCommandUsesPersistedTokenWhenReporterTokenIsEmpty(t *testing.
 	cfg := Config{BootstrapProjectID: "project", ClusterID: "cluster", AgentID: "agent", AgentAuthToken: "persisted-runtime-token"}
 	if err := runFluxSourceCommandOnce(context.Background(), cfg, reporter, nil); err != nil {
 		t.Fatalf("run Flux source command: %v", err)
+	}
+}
+
+func TestFluxSourceApplyErrorCodeIsSafeAndActionable(t *testing.T) {
+	tests := []struct {
+		name string
+		err  error
+		want domain.FluxSourceCommandErrorCode
+	}{
+		{name: "secret", err: fmt.Errorf("%w: denied", errFluxSourceSecretApply), want: domain.FluxSourceErrorSecretApply},
+		{name: "git repository", err: fmt.Errorf("%w: denied", errFluxSourceGitRepositoryApply), want: domain.FluxSourceErrorGitRepositoryApply},
+		{name: "kustomization", err: fmt.Errorf("%w: denied", errFluxSourceKustomizationApply), want: domain.FluxSourceErrorKustomizationApply},
+		{name: "legacy generic", err: fmt.Errorf("transport failed"), want: domain.FluxSourceErrorApplyFailed},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			if got := fluxSourceApplyErrorCode(tc.err); got != tc.want {
+				t.Fatalf("error code = %q, want %q", got, tc.want)
+			}
+		})
 	}
 }
 

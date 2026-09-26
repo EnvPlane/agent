@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/base64"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"log/slog"
@@ -20,6 +21,12 @@ type fluxSourceCredential struct {
 	Username string `json:"username"`
 	Password string `json:"password"`
 }
+
+var (
+	errFluxSourceSecretApply        = errors.New("apply Flux source Secret")
+	errFluxSourceGitRepositoryApply = errors.New("apply Flux source GitRepository")
+	errFluxSourceKustomizationApply = errors.New("apply Flux source Kustomization")
+)
 
 func (r *HTTPStatusReporter) FetchFluxSourceCommand(ctx context.Context, cfg Config) (*domain.AgentFluxSourceCommand, error) {
 	q := url.Values{"projectId": {cfg.BootstrapProjectID}, "clusterId": {cfg.ClusterID}, "agentId": {cfg.AgentID}}
@@ -108,13 +115,25 @@ func runFluxSourceCommandOnce(ctx context.Context, cfg Config, reporter *HTTPSta
 	}
 	result := domain.AgentFluxSourceResult{ContractVersion: domain.FluxSourceCommandContractVersion, CommandID: command.CommandID, AttemptID: command.AttemptID, TenantID: command.TenantID, ProjectID: command.ProjectID, ClusterID: command.ClusterID, AgentID: command.AgentID, Status: domain.FluxSourceCommandSucceeded, FinishedAt: time.Now().UTC()}
 	credential, err := reporter.FetchFluxSourceCredential(ctx, cfg, command.CommandID)
-	if err == nil {
-		err = source.applyFluxSource(ctx, *command, credential)
-	}
 	if err != nil {
-		result.Status, result.ErrorCode = domain.FluxSourceCommandFailed, "apply_failed"
+		result.Status, result.ErrorCode = domain.FluxSourceCommandFailed, domain.FluxSourceErrorCredentialFetch
+	} else if err := source.applyFluxSource(ctx, *command, credential); err != nil {
+		result.Status, result.ErrorCode = domain.FluxSourceCommandFailed, fluxSourceApplyErrorCode(err)
 	}
 	return reporter.ReportFluxSourceResult(ctx, result, cfg.AgentAuthToken)
+}
+
+func fluxSourceApplyErrorCode(err error) domain.FluxSourceCommandErrorCode {
+	switch {
+	case errors.Is(err, errFluxSourceSecretApply):
+		return domain.FluxSourceErrorSecretApply
+	case errors.Is(err, errFluxSourceGitRepositoryApply):
+		return domain.FluxSourceErrorGitRepositoryApply
+	case errors.Is(err, errFluxSourceKustomizationApply):
+		return domain.FluxSourceErrorKustomizationApply
+	default:
+		return domain.FluxSourceErrorApplyFailed
+	}
 }
 
 func (s *KubernetesNamespaceSource) applyFluxSource(ctx context.Context, command domain.AgentFluxSourceCommand, credential fluxSourceCredential) error {
@@ -133,17 +152,20 @@ func (s *KubernetesNamespaceSource) applyFluxSource(ctx context.Context, command
 	// historical basic-auth Secret without an immutable-type apply conflict.
 	secret := map[string]any{"apiVersion": "v1", "kind": "Secret", "metadata": map[string]any{"name": command.CredentialSecretName, "namespace": command.Namespace, "labels": map[string]string{"app.kubernetes.io/managed-by": "envplane", "envplane.io/project-id": command.ProjectID}}, "type": "kubernetes.io/basic-auth", "data": map[string]string{"username": base64.StdEncoding.EncodeToString([]byte(credential.Username)), "password": base64.StdEncoding.EncodeToString([]byte(credential.Password))}}
 	if err := s.applyFluxObject(ctx, "/api/v1/namespaces/"+url.PathEscape(command.Namespace)+"/secrets", command.CredentialSecretName, secret); err != nil {
-		return err
+		return fmt.Errorf("%w: %v", errFluxSourceSecretApply, err)
 	}
 	repository := map[string]any{"apiVersion": "source.toolkit.fluxcd.io/v1", "kind": "GitRepository", "metadata": map[string]any{"name": command.GitRepositoryName, "namespace": command.Namespace, "labels": map[string]string{"app.kubernetes.io/managed-by": "envplane", "envplane.io/project-id": command.ProjectID}}, "spec": map[string]any{"interval": "1m", "url": command.RepositoryURL, "ref": map[string]string{"branch": command.Branch}, "secretRef": map[string]string{"name": command.CredentialSecretName}}}
 	if err := s.applyFluxObject(ctx, "/apis/source.toolkit.fluxcd.io/v1/namespaces/"+url.PathEscape(command.Namespace)+"/gitrepositories", command.GitRepositoryName, repository); err != nil {
-		return err
+		return fmt.Errorf("%w: %v", errFluxSourceGitRepositoryApply, err)
 	}
 	// This project-level Kustomization only materializes the GitOps tree. Each
 	// generated preview owns its own Kustomization with wait=true, so a failing
 	// pre-existing base workload cannot block every preview environment.
 	kustomization := map[string]any{"apiVersion": "kustomize.toolkit.fluxcd.io/v1", "kind": "Kustomization", "metadata": map[string]any{"name": command.KustomizationName, "namespace": command.Namespace, "labels": map[string]string{"app.kubernetes.io/managed-by": "envplane", "envplane.io/project-id": command.ProjectID}}, "spec": map[string]any{"interval": "1m", "retryInterval": "1m", "timeout": "10m", "prune": true, "wait": false, "sourceRef": map[string]string{"kind": "GitRepository", "name": command.GitRepositoryName, "namespace": command.Namespace}, "path": command.KustomizationPath}}
-	return s.applyFluxObject(ctx, "/apis/kustomize.toolkit.fluxcd.io/v1/namespaces/"+url.PathEscape(command.Namespace)+"/kustomizations", command.KustomizationName, kustomization)
+	if err := s.applyFluxObject(ctx, "/apis/kustomize.toolkit.fluxcd.io/v1/namespaces/"+url.PathEscape(command.Namespace)+"/kustomizations", command.KustomizationName, kustomization); err != nil {
+		return fmt.Errorf("%w: %v", errFluxSourceKustomizationApply, err)
+	}
+	return nil
 }
 
 func (s *KubernetesNamespaceSource) applyFluxObject(ctx context.Context, collection, name string, object map[string]any) error {
