@@ -324,6 +324,7 @@ func isAgentAuthTokenNotIssuedError(err error) bool {
 func isStaleAgentAuthTokenMessage(message string) bool {
 	return strings.Contains(message, "auth token is not issued") ||
 		strings.Contains(message, "agent auth token is not configured") ||
+		strings.Contains(message, "invalid agent auth token") ||
 		strings.Contains(message, "invalid api token") ||
 		strings.Contains(message, "auth token is expired")
 }

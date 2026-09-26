@@ -142,6 +142,13 @@ func TestIsAgentAuthTokenNotIssuedErrorRecognizesInvalidAPIToken(t *testing.T) {
 	}
 }
 
+func TestIsAgentAuthTokenNotIssuedErrorRecognizesInvalidAgentAuthToken(t *testing.T) {
+	err := errors.New(`report heartbeat failed: status=401 body={"error":"invalid agent auth token"}`)
+	if !isAgentAuthTokenNotIssuedError(err) {
+		t.Fatal("expected invalid agent auth token response to trigger runtime auth recovery")
+	}
+}
+
 func TestIsAgentAuthTokenNotIssuedErrorRecognizesExpiredRuntimeToken(t *testing.T) {
 	err := errors.New(`report heartbeat failed: status=401 body={"error":"runtime auth token is expired"}`)
 	if !isAgentAuthTokenNotIssuedError(err) {
