@@ -71,7 +71,7 @@ func runAgent(logger *slog.Logger) {
 	clusteragent.SafeGo(logger, "heartbeat", func() {
 		runHeartbeat(ctx, cfg, reporter, source, logger, bootstrapRegistrationToken)
 	})
-	materializer, err := clusteragent.NewSecretMaterializer(source, nil, nil)
+	materializer, err := clusteragent.NewSecretMaterializer(source, nil, clusteragent.NewGeneratedSecretGenerator())
 	if err != nil {
 		logger.Error("failed to initialise secret materializer", "error", err)
 		os.Exit(1)
