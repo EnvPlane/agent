@@ -30,8 +30,10 @@ func (GeneratedSecretGenerator) Generate(_ context.Context, item domain.SecretMa
 	password := []byte(base64.RawURLEncoding.EncodeToString(value))
 	clearMaterialBytes(value)
 	data := map[string][]byte{key: password}
-	if profile == "postgresql-password-v1" && key != "POSTGRES_PASSWORD" {
-		data["POSTGRES_PASSWORD"] = append([]byte(nil), password...)
+	for _, engineKey := range generatedDatabasePasswordKeys(profile) {
+		if engineKey != key {
+			data[engineKey] = append([]byte(nil), password...)
+		}
 	}
 	return data, nil
 }
@@ -43,9 +45,24 @@ func generatedSecretProfile(raw string) (string, string) {
 	}
 	profile, key = strings.TrimSpace(profile), strings.TrimSpace(key)
 	switch profile {
-	case "random-password-v1", "postgresql-password-v1":
+	case "random-password-v1", "postgresql-password-v1", "mysql-password-v1", "mariadb-password-v1", "mongodb-password-v1", "redis-password-v1":
 		return profile, key
 	default:
 		return "", ""
+	}
+}
+
+func generatedDatabasePasswordKeys(profile string) []string {
+	switch profile {
+	case "postgresql-password-v1":
+		return []string{"POSTGRES_PASSWORD"}
+	case "mysql-password-v1", "mariadb-password-v1":
+		return []string{"MYSQL_PASSWORD"}
+	case "mongodb-password-v1":
+		return []string{"MONGO_INITDB_ROOT_PASSWORD"}
+	case "redis-password-v1":
+		return []string{"REDIS_PASSWORD"}
+	default:
+		return nil
 	}
 }
