@@ -34,6 +34,7 @@ type EventSource interface {
 
 type FluxSource interface {
 	ListFluxKustomizations(ctx context.Context, namespace string) ([]FluxKustomization, error)
+	GetFluxKustomization(ctx context.Context, namespace, name string) (FluxKustomization, error)
 	ListHelmReleases(ctx context.Context, namespace string) ([]HelmRelease, error)
 	FluxNamespace() string
 }
@@ -649,6 +650,31 @@ func (s *KubernetesNamespaceSource) ListFluxKustomizations(ctx context.Context, 
 		return nil
 	})
 	return items, err
+}
+
+func (s *KubernetesNamespaceSource) GetFluxKustomization(ctx context.Context, namespace, name string) (FluxKustomization, error) {
+	endpoint := s.apiURL + "/apis/kustomize.toolkit.fluxcd.io/v1/namespaces/" + url.PathEscape(namespace) + "/kustomizations/" + url.PathEscape(name)
+	req, err := s.newKubernetesGET(ctx, endpoint)
+	if err != nil {
+		return FluxKustomization{}, err
+	}
+	resp, err := s.client.Do(req)
+	if err != nil {
+		return FluxKustomization{}, err
+	}
+	defer func() { _ = resp.Body.Close() }()
+	if resp.StatusCode == http.StatusNotFound {
+		return FluxKustomization{}, nil
+	}
+	if resp.StatusCode/100 != 2 {
+		body, _ := io.ReadAll(io.LimitReader(resp.Body, 4096))
+		return FluxKustomization{}, fmt.Errorf("get Flux Kustomization %s/%s: status=%d body=%s", namespace, name, resp.StatusCode, strings.TrimSpace(string(body)))
+	}
+	var item FluxKustomization
+	if err := json.NewDecoder(resp.Body).Decode(&item); err != nil {
+		return FluxKustomization{}, err
+	}
+	return item, nil
 }
 
 func (s *KubernetesNamespaceSource) ListHelmReleases(ctx context.Context, namespace string) ([]HelmRelease, error) {

@@ -22,38 +22,39 @@ const (
 
 type Config struct {
 	// EnvDiagnostics contains variable names only; values are never retained.
-	EnvDiagnostics            []string
-	ControlPlaneURL           string
-	ControlPlaneEndpointMode  string
-	ControlPlaneCAFile        string
-	ControlPlaneTLSServerName string
-	AllowInsecureControlPlane bool
-	RegistrationToken         string
-	AgentAuthToken            string
-	AgentAuthTokenFile        string
-	TerminalEventQueueDir     string
-	BootstrapProjectID        string
-	ClusterID                 string
-	AgentID                   string
-	AgentNamespace            string
-	AgentVersion              string
-	KubernetesAPIURL          string
-	KubernetesToken           string
-	KubernetesCA              string
-	NamespaceSelector         string
-	Namespaces                []string
-	NamespaceInventoryOnly    bool
-	RequireEnvironmentLabel   bool
-	ExcludedNamespaces        []string
-	ReadSecrets               bool
-	FluxNamespace             string
-	ResyncInterval            time.Duration
-	ReportTimeout             time.Duration
-	HeartbeatInterval         time.Duration
-	KubernetesQPS             float64
-	KubernetesBurst           int
-	LoadBalancerCapability    string
-	RemoteGeneration          int64
+	EnvDiagnostics              []string
+	ControlPlaneURL             string
+	ControlPlaneEndpointMode    string
+	ControlPlaneCAFile          string
+	ControlPlaneTLSServerName   string
+	AllowInsecureControlPlane   bool
+	RegistrationToken           string
+	AgentAuthToken              string
+	AgentAuthTokenFile          string
+	TerminalEventQueueDir       string
+	BootstrapProjectID          string
+	ClusterID                   string
+	AgentID                     string
+	AgentNamespace              string
+	AgentVersion                string
+	KubernetesAPIURL            string
+	KubernetesToken             string
+	KubernetesCA                string
+	NamespaceSelector           string
+	Namespaces                  []string
+	NamespaceInventoryOnly      bool
+	RequireEnvironmentLabel     bool
+	ExcludedNamespaces          []string
+	ReadSecrets                 bool
+	FluxNamespace               string
+	FluxStatusKustomizationName string
+	ResyncInterval              time.Duration
+	ReportTimeout               time.Duration
+	HeartbeatInterval           time.Duration
+	KubernetesQPS               float64
+	KubernetesBurst             int
+	LoadBalancerCapability      string
+	RemoteGeneration            int64
 }
 
 // CapabilityConfigFingerprint identifies the configuration that changes
@@ -84,6 +85,7 @@ func (c Config) CapabilityConfigFingerprint() string {
 		"namespaceInventoryOnly=" + strconv.FormatBool(c.NamespaceInventoryOnly),
 		"excludedNamespaces=" + normalizeList(c.ExcludedNamespaces),
 		"fluxNamespace=" + strings.TrimSpace(c.FluxNamespace),
+		"fluxStatusKustomizationName=" + strings.TrimSpace(c.FluxStatusKustomizationName),
 		"readSecrets=" + strconv.FormatBool(c.ReadSecrets),
 		"loadBalancerCapability=" + strings.ToLower(strings.TrimSpace(c.LoadBalancerCapability)),
 	}, "\x00")
@@ -121,20 +123,21 @@ func ConfigFromEnv() Config {
 		KubernetesToken:           getenv("ENVPLANE_KUBERNETES_TOKEN_PATH", defaultServiceAccountToken),
 		KubernetesCA:              getenv("ENVPLANE_KUBERNETES_CA_PATH", defaultServiceAccountCA),
 		// An empty selector intentionally means all namespaces.
-		NamespaceSelector:       strings.TrimSpace(getenv("ENVPLANE_WATCH_NAMESPACE_SELECTOR", "")),
-		Namespaces:              splitCSV(getenv("ENVPLANE_WATCH_NAMESPACES", "")),
-		NamespaceInventoryOnly:  getenvBool("ENVPLANE_NAMESPACE_INVENTORY_ONLY", false),
-		RequireEnvironmentLabel: getenvBool("ENVPLANE_REQUIRE_ENVIRONMENT_LABEL", false),
-		ExcludedNamespaces:      excludedNamespaces,
-		ReadSecrets:             getenvBool("ENVPLANE_DISCOVERY_READ_SECRETS", false),
-		FluxNamespace:           getenv("ENVPLANE_FLUX_NAMESPACE", "flux-system"),
-		ResyncInterval:          time.Duration(getenvInt("ENVPLANE_AGENT_RESYNC_SECONDS", 30)) * time.Second,
-		ReportTimeout:           time.Duration(getenvInt("ENVPLANE_AGENT_REPORT_TIMEOUT_SECONDS", 10)) * time.Second,
-		HeartbeatInterval:       time.Duration(getenvInt("ENVPLANE_AGENT_HEARTBEAT_SECONDS", 30)) * time.Second,
-		KubernetesQPS:           getenvFloat("ENVPLANE_KUBERNETES_QPS", defaultKubernetesQPS),
-		KubernetesBurst:         getenvInt("ENVPLANE_KUBERNETES_BURST", defaultKubernetesBurst),
-		LoadBalancerCapability:  strings.ToLower(strings.TrimSpace(getenv("ENVPLANE_LOAD_BALANCER_CAPABILITY", "auto"))),
-		RemoteGeneration:        int64(getenvInt("ENVPLANE_REMOTE_GENERATION", 0)),
+		NamespaceSelector:           strings.TrimSpace(getenv("ENVPLANE_WATCH_NAMESPACE_SELECTOR", "")),
+		Namespaces:                  splitCSV(getenv("ENVPLANE_WATCH_NAMESPACES", "")),
+		NamespaceInventoryOnly:      getenvBool("ENVPLANE_NAMESPACE_INVENTORY_ONLY", false),
+		RequireEnvironmentLabel:     getenvBool("ENVPLANE_REQUIRE_ENVIRONMENT_LABEL", false),
+		ExcludedNamespaces:          excludedNamespaces,
+		ReadSecrets:                 getenvBool("ENVPLANE_DISCOVERY_READ_SECRETS", false),
+		FluxNamespace:               getenv("ENVPLANE_FLUX_NAMESPACE", "flux-system"),
+		FluxStatusKustomizationName: strings.TrimSpace(getenv("ENVPLANE_FLUX_STATUS_KUSTOMIZATION_NAME", "")),
+		ResyncInterval:              time.Duration(getenvInt("ENVPLANE_AGENT_RESYNC_SECONDS", 30)) * time.Second,
+		ReportTimeout:               time.Duration(getenvInt("ENVPLANE_AGENT_REPORT_TIMEOUT_SECONDS", 10)) * time.Second,
+		HeartbeatInterval:           time.Duration(getenvInt("ENVPLANE_AGENT_HEARTBEAT_SECONDS", 30)) * time.Second,
+		KubernetesQPS:               getenvFloat("ENVPLANE_KUBERNETES_QPS", defaultKubernetesQPS),
+		KubernetesBurst:             getenvInt("ENVPLANE_KUBERNETES_BURST", defaultKubernetesBurst),
+		LoadBalancerCapability:      strings.ToLower(strings.TrimSpace(getenv("ENVPLANE_LOAD_BALANCER_CAPABILITY", "auto"))),
+		RemoteGeneration:            int64(getenvInt("ENVPLANE_REMOTE_GENERATION", 0)),
 	}
 	cfg.EnvDiagnostics = legacyDiagnostics()
 	return cfg

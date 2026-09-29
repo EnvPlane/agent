@@ -108,3 +108,21 @@ func TestFluxStatusCollectorUsesFluxSource(t *testing.T) {
 		t.Fatalf("helm release namespace = %q", source.helmReleaseNamespace)
 	}
 }
+
+func TestProjectFluxStatusCollectorGetsOnlyConfiguredKustomization(t *testing.T) {
+	source := &fakeFluxSource{kustomizations: []FluxKustomization{
+		{Metadata: FluxMetadata{Name: "checkout-prs", Namespace: "flux-system"}, Status: FluxStatus{Conditions: []FluxCondition{{Type: "Ready", Status: "True"}}}},
+		{Metadata: FluxMetadata{Name: "other-project", Namespace: "flux-system"}},
+	}}
+	collector := NewProjectFluxStatusCollector(source, "checkout-prs")
+	status, err := collector.Collect(context.Background(), "legacy-preview", Namespace{Metadata: NamespaceMetadata{Name: "envplane-pr-legacy-preview"}})
+	if err != nil {
+		t.Fatalf("collect: %v", err)
+	}
+	if source.kustomizationNamespace != "flux-system" || source.kustomizationName != "checkout-prs" {
+		t.Fatalf("configured Kustomization GET = %q/%q", source.kustomizationNamespace, source.kustomizationName)
+	}
+	if len(status.Kustomizations) != 1 || status.Kustomizations[0].Name != "checkout-prs" {
+		t.Fatalf("status Kustomizations = %#v", status.Kustomizations)
+	}
+}

@@ -95,6 +95,17 @@ func (w *NamespaceWatcher) SetTerminalEventQueueDir(dir string) {
 	w.terminalQueueDir = strings.TrimSpace(dir)
 }
 
+// SetFluxStatusKustomizationName narrows Flux status collection to the named
+// project source. Empty keeps the legacy list-based collector for installations
+// that have intentionally granted namespace-wide Flux read access.
+func (w *NamespaceWatcher) SetFluxStatusKustomizationName(name string) {
+	fluxSource, ok := w.source.(FluxSource)
+	if !ok {
+		return
+	}
+	w.fluxCollector = NewProjectFluxStatusCollector(fluxSource, name)
+}
+
 // SetRequireEnvironmentLabel disables legacy namespace-name binding. New
 // installations should require the control-plane-owned environment label.
 func (w *NamespaceWatcher) SetRequireEnvironmentLabel(require bool) {

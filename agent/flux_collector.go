@@ -10,15 +10,23 @@ import (
 )
 
 type FluxStatusCollector struct {
-	source FluxSource
+	source            FluxSource
+	kustomizationName string
 }
 
 func NewFluxStatusCollector(source FluxSource) *FluxStatusCollector {
 	return &FluxStatusCollector{source: source}
 }
 
+// NewProjectFluxStatusCollector limits Flux observation to a configured
+// project Kustomization. It lets the Agent use exact Kubernetes GET access in
+// a shared Flux namespace instead of listing other projects' resources.
+func NewProjectFluxStatusCollector(source FluxSource, kustomizationName string) *FluxStatusCollector {
+	return &FluxStatusCollector{source: source, kustomizationName: strings.TrimSpace(kustomizationName)}
+}
+
 func (c *FluxStatusCollector) Collect(ctx context.Context, environmentID string, namespace Namespace) (domain.FluxStatus, error) {
-	kustomizations, err := c.source.ListFluxKustomizations(ctx, c.source.FluxNamespace())
+	kustomizations, err := c.kustomizations(ctx)
 	if err != nil {
 		return domain.FluxStatus{}, err
 	}
@@ -26,7 +34,24 @@ func (c *FluxStatusCollector) Collect(ctx context.Context, environmentID string,
 	if err != nil {
 		return domain.FluxStatus{}, err
 	}
+	if c.kustomizationName != "" {
+		return BuildFluxStatusForProjectKustomization(kustomizations, helmReleases), nil
+	}
 	return BuildFluxStatus(environmentID, namespace, kustomizations, helmReleases), nil
+}
+
+func (c *FluxStatusCollector) kustomizations(ctx context.Context) ([]FluxKustomization, error) {
+	if c.kustomizationName == "" {
+		return c.source.ListFluxKustomizations(ctx, c.source.FluxNamespace())
+	}
+	item, err := c.source.GetFluxKustomization(ctx, c.source.FluxNamespace(), c.kustomizationName)
+	if err != nil {
+		return nil, err
+	}
+	if strings.TrimSpace(item.Metadata.Name) == "" {
+		return nil, nil
+	}
+	return []FluxKustomization{item}, nil
 }
 
 func BuildFluxStatus(environmentID string, namespace Namespace, kustomizations []FluxKustomization, helmReleases []HelmRelease) domain.FluxStatus {
@@ -51,6 +76,28 @@ func BuildFluxStatus(environmentID string, namespace Namespace, kustomizations [
 		return helmReleaseStatuses[i].Name < helmReleaseStatuses[j].Name
 	})
 
+	status := aggregateFluxStatus(kustomizationStatuses, helmReleaseStatuses)
+	return domain.FluxStatus{
+		Status:         status,
+		Message:        fluxStatusMessage(status, kustomizationStatuses, helmReleaseStatuses),
+		Kustomizations: kustomizationStatuses,
+		HelmReleases:   helmReleaseStatuses,
+	}
+}
+
+// BuildFluxStatusForProjectKustomization combines the health of one
+// project-owned Flux source with Helm releases in the current environment.
+func BuildFluxStatusForProjectKustomization(kustomizations []FluxKustomization, helmReleases []HelmRelease) domain.FluxStatus {
+	kustomizationStatuses := make([]domain.FluxResourceStatus, 0, len(kustomizations))
+	helmReleaseStatuses := make([]domain.FluxResourceStatus, 0, len(helmReleases))
+	for _, item := range kustomizations {
+		kustomizationStatuses = append(kustomizationStatuses, fluxResourceStatus("Kustomization", item.Metadata, item.Status))
+	}
+	for _, item := range helmReleases {
+		helmReleaseStatuses = append(helmReleaseStatuses, fluxResourceStatus("HelmRelease", item.Metadata, item.Status))
+	}
+	sort.Slice(kustomizationStatuses, func(i, j int) bool { return kustomizationStatuses[i].Name < kustomizationStatuses[j].Name })
+	sort.Slice(helmReleaseStatuses, func(i, j int) bool { return helmReleaseStatuses[i].Name < helmReleaseStatuses[j].Name })
 	status := aggregateFluxStatus(kustomizationStatuses, helmReleaseStatuses)
 	return domain.FluxStatus{
 		Status:         status,

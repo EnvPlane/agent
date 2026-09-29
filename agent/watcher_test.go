@@ -522,6 +522,7 @@ func (f *fakeEventSource) ListEvents(_ context.Context, namespace string) ([]Kub
 
 type fakeFluxSource struct {
 	kustomizationNamespace string
+	kustomizationName      string
 	helmReleaseNamespace   string
 	kustomizations         []FluxKustomization
 	helmReleases           []HelmRelease
@@ -530,6 +531,17 @@ type fakeFluxSource struct {
 func (f *fakeFluxSource) ListFluxKustomizations(_ context.Context, namespace string) ([]FluxKustomization, error) {
 	f.kustomizationNamespace = namespace
 	return f.kustomizations, nil
+}
+
+func (f *fakeFluxSource) GetFluxKustomization(_ context.Context, namespace, name string) (FluxKustomization, error) {
+	f.kustomizationNamespace = namespace
+	f.kustomizationName = name
+	for _, item := range f.kustomizations {
+		if item.Metadata.Name == name {
+			return item, nil
+		}
+	}
+	return FluxKustomization{}, nil
 }
 
 func (f *fakeFluxSource) ListHelmReleases(_ context.Context, namespace string) ([]HelmRelease, error) {

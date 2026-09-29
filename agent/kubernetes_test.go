@@ -319,6 +319,8 @@ func TestKubernetesNamespaceSourceListsFluxResources(t *testing.T) {
 			_ = json.NewEncoder(w).Encode(fluxKustomizationList{
 				Items: []FluxKustomization{{Metadata: FluxMetadata{Name: "kan-405.bethunder", Namespace: "flux-system"}}},
 			})
+		case "/apis/kustomize.toolkit.fluxcd.io/v1/namespaces/flux-system/kustomizations/kan-405.bethunder":
+			_ = json.NewEncoder(w).Encode(FluxKustomization{Metadata: FluxMetadata{Name: "kan-405.bethunder", Namespace: "flux-system"}})
 		case "/apis/helm.toolkit.fluxcd.io/v2/namespaces/envplane-pr-kan-405/helmreleases":
 			_ = json.NewEncoder(w).Encode(helmReleaseList{
 				Items: []HelmRelease{{Metadata: FluxMetadata{Name: "nginx", Namespace: "envplane-pr-kan-405"}}},
@@ -334,6 +336,10 @@ func TestKubernetesNamespaceSourceListsFluxResources(t *testing.T) {
 	if err != nil {
 		t.Fatalf("list flux kustomizations: %v", err)
 	}
+	kustomization, err := source.GetFluxKustomization(context.Background(), "flux-system", "kan-405.bethunder")
+	if err != nil {
+		t.Fatalf("get Flux Kustomization: %v", err)
+	}
 	helmReleases, err := source.ListHelmReleases(context.Background(), "envplane-pr-kan-405")
 	if err != nil {
 		t.Fatalf("list helm releases: %v", err)
@@ -342,10 +348,13 @@ func TestKubernetesNamespaceSourceListsFluxResources(t *testing.T) {
 	if len(kustomizations) != 1 || kustomizations[0].Metadata.Name != "kan-405.bethunder" {
 		t.Fatalf("kustomizations = %#v", kustomizations)
 	}
+	if kustomization.Metadata.Name != "kan-405.bethunder" {
+		t.Fatalf("Kustomization = %#v", kustomization)
+	}
 	if len(helmReleases) != 1 || helmReleases[0].Metadata.Name != "nginx" {
 		t.Fatalf("helm releases = %#v", helmReleases)
 	}
-	if len(paths) != 2 {
+	if len(paths) != 3 {
 		t.Fatalf("paths = %#v", paths)
 	}
 }
