@@ -53,6 +53,7 @@ func runAgent(logger *slog.Logger) {
 	watcher := clusteragent.NewNamespaceWatcher(source, reporter, cfg.ResyncInterval, logger)
 	watcher.SetTerminalEventQueueDir(cfg.TerminalEventQueueDir)
 	watcher.SetFluxStatusKustomizationName(cfg.FluxStatusKustomizationName)
+	watcher.SetFluxStatusEnvironmentScoped(cfg.FluxStatusEnvironmentScoped)
 	watcher.SetRequireEnvironmentLabel(cfg.RequireEnvironmentLabel)
 	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
 	defer stop()

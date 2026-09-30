@@ -48,6 +48,7 @@ type Config struct {
 	ReadSecrets                 bool
 	FluxNamespace               string
 	FluxStatusKustomizationName string
+	FluxStatusEnvironmentScoped bool
 	ResyncInterval              time.Duration
 	ReportTimeout               time.Duration
 	HeartbeatInterval           time.Duration
@@ -86,6 +87,7 @@ func (c Config) CapabilityConfigFingerprint() string {
 		"excludedNamespaces=" + normalizeList(c.ExcludedNamespaces),
 		"fluxNamespace=" + strings.TrimSpace(c.FluxNamespace),
 		"fluxStatusKustomizationName=" + strings.TrimSpace(c.FluxStatusKustomizationName),
+		"fluxStatusEnvironmentScoped=" + strconv.FormatBool(c.FluxStatusEnvironmentScoped),
 		"readSecrets=" + strconv.FormatBool(c.ReadSecrets),
 		"loadBalancerCapability=" + strings.ToLower(strings.TrimSpace(c.LoadBalancerCapability)),
 	}, "\x00")
@@ -131,6 +133,7 @@ func ConfigFromEnv() Config {
 		ReadSecrets:                 getenvBool("ENVPLANE_DISCOVERY_READ_SECRETS", false),
 		FluxNamespace:               getenv("ENVPLANE_FLUX_NAMESPACE", "flux-system"),
 		FluxStatusKustomizationName: strings.TrimSpace(getenv("ENVPLANE_FLUX_STATUS_KUSTOMIZATION_NAME", "")),
+		FluxStatusEnvironmentScoped: getenvBool("ENVPLANE_FLUX_STATUS_ENVIRONMENT_SCOPED", false),
 		ResyncInterval:              time.Duration(getenvInt("ENVPLANE_AGENT_RESYNC_SECONDS", 30)) * time.Second,
 		ReportTimeout:               time.Duration(getenvInt("ENVPLANE_AGENT_REPORT_TIMEOUT_SECONDS", 10)) * time.Second,
 		HeartbeatInterval:           time.Duration(getenvInt("ENVPLANE_AGENT_HEARTBEAT_SECONDS", 30)) * time.Second,

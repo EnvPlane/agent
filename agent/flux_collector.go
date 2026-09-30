@@ -12,6 +12,7 @@ import (
 type FluxStatusCollector struct {
 	source            FluxSource
 	kustomizationName string
+	environmentScoped bool
 }
 
 func NewFluxStatusCollector(source FluxSource) *FluxStatusCollector {
@@ -25,7 +26,18 @@ func NewProjectFluxStatusCollector(source FluxSource, kustomizationName string) 
 	return &FluxStatusCollector{source: source, kustomizationName: strings.TrimSpace(kustomizationName)}
 }
 
+// NewEnvironmentFluxStatusCollector reads only the Kustomization belonging to
+// the environment currently being reported. The caller grants exact GET access
+// to durable environment Kustomization names, so a project Agent never lists a
+// shared Flux namespace.
+func NewEnvironmentFluxStatusCollector(source FluxSource) *FluxStatusCollector {
+	return &FluxStatusCollector{source: source, environmentScoped: true}
+}
+
 func (c *FluxStatusCollector) Collect(ctx context.Context, environmentID string, namespace Namespace) (domain.FluxStatus, error) {
+	if c.environmentScoped {
+		return c.collectEnvironment(ctx, environmentID, namespace)
+	}
 	kustomizations, err := c.kustomizations(ctx)
 	if err != nil {
 		return domain.FluxStatus{}, err
@@ -36,6 +48,26 @@ func (c *FluxStatusCollector) Collect(ctx context.Context, environmentID string,
 	}
 	if c.kustomizationName != "" {
 		return BuildFluxStatusForProjectKustomization(kustomizations, helmReleases), nil
+	}
+	return BuildFluxStatus(environmentID, namespace, kustomizations, helmReleases), nil
+}
+
+func (c *FluxStatusCollector) collectEnvironment(ctx context.Context, environmentID string, namespace Namespace) (domain.FluxStatus, error) {
+	product := strings.TrimSpace(namespace.Metadata.Labels["envplane.io/product"])
+	if strings.TrimSpace(environmentID) == "" || product == "" {
+		return BuildFluxStatus(environmentID, namespace, nil, nil), nil
+	}
+	item, err := c.source.GetFluxKustomization(ctx, c.source.FluxNamespace(), environmentID+"."+product)
+	if err != nil {
+		return domain.FluxStatus{}, err
+	}
+	helmReleases, err := c.source.ListHelmReleases(ctx, namespace.Metadata.Name)
+	if err != nil {
+		return domain.FluxStatus{}, err
+	}
+	kustomizations := []FluxKustomization(nil)
+	if strings.TrimSpace(item.Metadata.Name) != "" {
+		kustomizations = []FluxKustomization{item}
 	}
 	return BuildFluxStatus(environmentID, namespace, kustomizations, helmReleases), nil
 }

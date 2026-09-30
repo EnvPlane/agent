@@ -106,6 +106,20 @@ func (w *NamespaceWatcher) SetFluxStatusKustomizationName(name string) {
 	w.fluxCollector = NewProjectFluxStatusCollector(fluxSource, name)
 }
 
+// SetFluxStatusEnvironmentScoped limits Flux observation to the current
+// environment's trusted Kustomization identity instead of listing a shared
+// Flux namespace.
+func (w *NamespaceWatcher) SetFluxStatusEnvironmentScoped(enabled bool) {
+	if !enabled {
+		return
+	}
+	fluxSource, ok := w.source.(FluxSource)
+	if !ok {
+		return
+	}
+	w.fluxCollector = NewEnvironmentFluxStatusCollector(fluxSource)
+}
+
 // SetRequireEnvironmentLabel disables legacy namespace-name binding. New
 // installations should require the control-plane-owned environment label.
 func (w *NamespaceWatcher) SetRequireEnvironmentLabel(require bool) {

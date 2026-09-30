@@ -126,3 +126,20 @@ func TestProjectFluxStatusCollectorGetsOnlyConfiguredKustomization(t *testing.T)
 		t.Fatalf("status Kustomizations = %#v", status.Kustomizations)
 	}
 }
+
+func TestEnvironmentFluxStatusCollectorGetsOnlyCurrentEnvironment(t *testing.T) {
+	source := &fakeFluxSource{kustomizations: []FluxKustomization{
+		{Metadata: FluxMetadata{Name: "checkout-42.generic", Namespace: "flux-system"}, Status: FluxStatus{Conditions: []FluxCondition{{Type: "Ready", Status: "False", Reason: "HealthCheckFailed"}}}},
+	}}
+	collector := NewEnvironmentFluxStatusCollector(source)
+	status, err := collector.Collect(context.Background(), "checkout-42", Namespace{Metadata: NamespaceMetadata{Name: "envplane-pr-checkout-42", Labels: map[string]string{"envplane.io/product": "generic"}}})
+	if err != nil {
+		t.Fatalf("collect: %v", err)
+	}
+	if source.kustomizationName != "checkout-42.generic" {
+		t.Fatalf("environment Kustomization GET = %q", source.kustomizationName)
+	}
+	if status.Status != domain.StatusFailed || len(status.Kustomizations) != 1 || !status.Kustomizations[0].Failed {
+		t.Fatalf("status = %#v", status)
+	}
+}
