@@ -98,9 +98,9 @@ func TestKubernetesNamespaceSourceUsesNamespacedReadsForExplicitAllowlist(t *tes
 		}
 		switch r.URL.Path {
 		case "/api/v1/namespaces/dev-base":
-			_ = json.NewEncoder(w).Encode(Namespace{Metadata: NamespaceMetadata{Name: "dev-base"}, Status: NamespaceStatus{Phase: "Active"}})
+			_ = json.NewEncoder(w).Encode(Namespace{Metadata: NamespaceMetadata{Name: "dev-base", Labels: map[string]string{"envplane.io/environment-id": "dev-base"}}, Status: NamespaceStatus{Phase: "Active"}})
 		case "/api/v1/namespaces/shared":
-			_ = json.NewEncoder(w).Encode(Namespace{Metadata: NamespaceMetadata{Name: "shared"}, Status: NamespaceStatus{Phase: "Active"}})
+			_ = json.NewEncoder(w).Encode(Namespace{Metadata: NamespaceMetadata{Name: "shared", Labels: map[string]string{"envplane.io/environment-id": "shared"}}, Status: NamespaceStatus{Phase: "Active"}})
 		default:
 			http.NotFound(w, r)
 		}
@@ -114,6 +114,9 @@ func TestKubernetesNamespaceSourceUsesNamespacedReadsForExplicitAllowlist(t *tes
 	}
 	if got, want := []string{items[0].Metadata.Name, items[1].Metadata.Name}, []string{"dev-base", "shared"}; !reflect.DeepEqual(got, want) {
 		t.Fatalf("explicit namespaces = %#v want %#v", got, want)
+	}
+	if items[0].Metadata.Labels["envplane.io/environment-id"] != "dev-base" || items[1].Status.Phase != "Active" {
+		t.Fatalf("explicit namespace metadata was not preserved: %#v", items)
 	}
 	if !reflect.DeepEqual(paths, []string{"/api/v1/namespaces", "/api/v1/namespaces/dev-base", "/api/v1/namespaces/shared"}) {
 		t.Fatalf("namespace paths = %#v", paths)
