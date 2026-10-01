@@ -51,6 +51,7 @@ func runAgent(logger *slog.Logger) {
 	}
 	reporter := clusteragent.NewHTTPStatusReporterForAgentWithTLS(cfg.ControlPlaneURL, "", cfg.ClusterID, cfg.AgentID, cfg.ReportTimeout, cfg.ControlPlaneCAFile, cfg.ControlPlaneTLSServerName)
 	watcher := clusteragent.NewNamespaceWatcher(source, reporter, cfg.ResyncInterval, logger)
+	watcher.SetFluxStatusEnabled(cfg.FluxStatusEnabled)
 	watcher.SetTerminalEventQueueDir(cfg.TerminalEventQueueDir)
 	watcher.SetFluxStatusKustomizationName(cfg.FluxStatusKustomizationName)
 	watcher.SetFluxStatusEnvironmentScoped(cfg.FluxStatusEnvironmentScoped)

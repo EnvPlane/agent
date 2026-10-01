@@ -95,6 +95,15 @@ func (w *NamespaceWatcher) SetTerminalEventQueueDir(dir string) {
 	w.terminalQueueDir = strings.TrimSpace(dir)
 }
 
+// SetFluxStatusEnabled turns Flux observation on only for deployment backends
+// that configure the corresponding RBAC. Helm Direct Agents do not need to
+// query the shared Flux namespace and must not emit permission-denied noise.
+func (w *NamespaceWatcher) SetFluxStatusEnabled(enabled bool) {
+	if !enabled {
+		w.fluxCollector = nil
+	}
+}
+
 // SetFluxStatusKustomizationName narrows Flux status collection to the named
 // project source. Empty keeps the legacy list-based collector for installations
 // that have intentionally granted namespace-wide Flux read access.

@@ -162,6 +162,17 @@ func TestConfigFromEnvDisablesSecretDiscoveryUnlessExplicitlyEnabled(t *testing.
 	}
 }
 
+func TestConfigFromEnvKeepsFluxStatusEnabledUnlessExplicitlyDisabled(t *testing.T) {
+	t.Setenv("ENVPLANE_FLUX_STATUS_ENABLED", "")
+	if !ConfigFromEnv().FluxStatusEnabled {
+		t.Fatal("Flux status must remain enabled for legacy direct-binary configurations")
+	}
+	t.Setenv("ENVPLANE_FLUX_STATUS_ENABLED", "false")
+	if ConfigFromEnv().FluxStatusEnabled {
+		t.Fatal("Flux status must honor an explicit disabled setting")
+	}
+}
+
 func TestConfigRejectsHostLocalRemoteControlPlaneEndpoint(t *testing.T) {
 	cfg := Config{
 		ControlPlaneURL:          "https://host.minikube.internal:18080",

@@ -47,6 +47,7 @@ type Config struct {
 	ExcludedNamespaces          []string
 	ReadSecrets                 bool
 	FluxNamespace               string
+	FluxStatusEnabled           bool
 	FluxStatusKustomizationName string
 	FluxStatusEnvironmentScoped bool
 	ResyncInterval              time.Duration
@@ -86,6 +87,7 @@ func (c Config) CapabilityConfigFingerprint() string {
 		"namespaceInventoryOnly=" + strconv.FormatBool(c.NamespaceInventoryOnly),
 		"excludedNamespaces=" + normalizeList(c.ExcludedNamespaces),
 		"fluxNamespace=" + strings.TrimSpace(c.FluxNamespace),
+		"fluxStatusEnabled=" + strconv.FormatBool(c.FluxStatusEnabled),
 		"fluxStatusKustomizationName=" + strings.TrimSpace(c.FluxStatusKustomizationName),
 		"fluxStatusEnvironmentScoped=" + strconv.FormatBool(c.FluxStatusEnvironmentScoped),
 		"readSecrets=" + strconv.FormatBool(c.ReadSecrets),
@@ -125,13 +127,16 @@ func ConfigFromEnv() Config {
 		KubernetesToken:           getenv("ENVPLANE_KUBERNETES_TOKEN_PATH", defaultServiceAccountToken),
 		KubernetesCA:              getenv("ENVPLANE_KUBERNETES_CA_PATH", defaultServiceAccountCA),
 		// An empty selector intentionally means all namespaces.
-		NamespaceSelector:           strings.TrimSpace(getenv("ENVPLANE_WATCH_NAMESPACE_SELECTOR", "")),
-		Namespaces:                  splitCSV(getenv("ENVPLANE_WATCH_NAMESPACES", "")),
-		NamespaceInventoryOnly:      getenvBool("ENVPLANE_NAMESPACE_INVENTORY_ONLY", false),
-		RequireEnvironmentLabel:     getenvBool("ENVPLANE_REQUIRE_ENVIRONMENT_LABEL", false),
-		ExcludedNamespaces:          excludedNamespaces,
-		ReadSecrets:                 getenvBool("ENVPLANE_DISCOVERY_READ_SECRETS", false),
-		FluxNamespace:               getenv("ENVPLANE_FLUX_NAMESPACE", "flux-system"),
+		NamespaceSelector:       strings.TrimSpace(getenv("ENVPLANE_WATCH_NAMESPACE_SELECTOR", "")),
+		Namespaces:              splitCSV(getenv("ENVPLANE_WATCH_NAMESPACES", "")),
+		NamespaceInventoryOnly:  getenvBool("ENVPLANE_NAMESPACE_INVENTORY_ONLY", false),
+		RequireEnvironmentLabel: getenvBool("ENVPLANE_REQUIRE_ENVIRONMENT_LABEL", false),
+		ExcludedNamespaces:      excludedNamespaces,
+		ReadSecrets:             getenvBool("ENVPLANE_DISCOVERY_READ_SECRETS", false),
+		FluxNamespace:           getenv("ENVPLANE_FLUX_NAMESPACE", "flux-system"),
+		// Preserve the legacy direct-binary behavior. Helm-managed Agents set
+		// this explicitly from their backend-specific RBAC contract.
+		FluxStatusEnabled:           getenvBool("ENVPLANE_FLUX_STATUS_ENABLED", true),
 		FluxStatusKustomizationName: strings.TrimSpace(getenv("ENVPLANE_FLUX_STATUS_KUSTOMIZATION_NAME", "")),
 		FluxStatusEnvironmentScoped: getenvBool("ENVPLANE_FLUX_STATUS_ENVIRONMENT_SCOPED", false),
 		ResyncInterval:              time.Duration(getenvInt("ENVPLANE_AGENT_RESYNC_SECONDS", 30)) * time.Second,

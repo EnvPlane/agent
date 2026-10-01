@@ -348,6 +348,24 @@ func TestNamespaceWatcherReportsFluxStatus(t *testing.T) {
 	}
 }
 
+func TestNamespaceWatcherSkipsFluxStatusWhenDisabled(t *testing.T) {
+	source := &fakeNamespaceSource{namespaces: []Namespace{{
+		Metadata: NamespaceMetadata{Name: "envplane-pr-helm", Labels: map[string]string{environmentIDLabel: "helm"}},
+		Status:   NamespaceStatus{Phase: "Active"},
+	}}}
+	flux := &fakeFluxSource{}
+	reporter := &fakeStatusReporter{}
+	watcher := NewNamespaceWatcherWithCollectors(source, reporter, nil, nil, NewFluxStatusCollector(flux), time.Second, nil)
+	watcher.SetFluxStatusEnabled(false)
+
+	if err := watcher.SyncOnce(context.Background()); err != nil {
+		t.Fatalf("sync once: %v", err)
+	}
+	if len(reporter.fluxReports) != 0 {
+		t.Fatalf("disabled Flux status unexpectedly reported %#v", reporter.fluxReports)
+	}
+}
+
 func TestMergeNamespaceAndFluxStatusIgnoresEmptyFluxInventory(t *testing.T) {
 	if got := mergeNamespaceAndFluxStatus(domain.StatusReady, domain.FluxStatus{Status: domain.StatusCreating}); got != domain.StatusReady {
 		t.Fatalf("empty Flux inventory changed namespace status to %q", got)
