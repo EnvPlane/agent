@@ -366,6 +366,37 @@ func TestNamespaceWatcherSkipsFluxStatusWhenDisabled(t *testing.T) {
 	}
 }
 
+type fakeNamespaceFluxSource struct {
+	*fakeNamespaceSource
+	*fakeFluxSource
+}
+
+func TestNamespaceWatcherFluxScopeDoesNotOverrideDisabledStatus(t *testing.T) {
+	for _, name := range []string{"", "project-source"} {
+		for _, environmentScoped := range []bool{false, true} {
+			source := &fakeNamespaceFluxSource{
+				fakeNamespaceSource: &fakeNamespaceSource{namespaces: []Namespace{{
+					Metadata: NamespaceMetadata{Name: "envplane-pr-helm", Labels: map[string]string{environmentIDLabel: "helm"}},
+					Status:   NamespaceStatus{Phase: "Active"},
+				}}},
+				fakeFluxSource: &fakeFluxSource{},
+			}
+			reporter := &fakeStatusReporter{}
+			watcher := NewNamespaceWatcher(source, reporter, time.Second, nil)
+			// Match the production startup order, including both scope setters.
+			watcher.SetFluxStatusEnabled(false)
+			watcher.SetFluxStatusKustomizationName(name)
+			watcher.SetFluxStatusEnvironmentScoped(environmentScoped)
+			if err := watcher.SyncOnce(context.Background()); err != nil {
+				t.Fatalf("sync: %v", err)
+			}
+			if len(reporter.fluxReports) != 0 || source.kustomizationNamespace != "" || source.helmReleaseNamespace != "" {
+				t.Fatalf("disabled Flux queried or reported status: name=%q environmentScoped=%v", name, environmentScoped)
+			}
+		}
+	}
+}
+
 func TestMergeNamespaceAndFluxStatusIgnoresEmptyFluxInventory(t *testing.T) {
 	if got := mergeNamespaceAndFluxStatus(domain.StatusReady, domain.FluxStatus{Status: domain.StatusCreating}); got != domain.StatusReady {
 		t.Fatalf("empty Flux inventory changed namespace status to %q", got)

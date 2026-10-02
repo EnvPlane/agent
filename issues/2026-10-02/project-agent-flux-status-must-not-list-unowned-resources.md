@@ -1,5 +1,14 @@
 # Project Agent must not list unowned Flux status resources
 
+## Implementation
+
+Fixed locally: exact-name and environment-scoped collectors already exist, but
+startup scope setters recreated a collector after `SetFluxStatusEnabled(false)`.
+Both scope setters now preserve disabled observation. Regression coverage uses
+the production startup order with empty/named sources and both environment scope
+modes, asserting no Flux queries or reports. No RBAC permissions were broadened.
+Live verification requires publishing and deploying the updated Agent image.
+
 ## Evidence
 
 During the live `app2` Bootstrap rescan on 2026-10-02, the project Agent

@@ -108,6 +108,9 @@ func (w *NamespaceWatcher) SetFluxStatusEnabled(enabled bool) {
 // project source. Empty keeps the legacy list-based collector for installations
 // that have intentionally granted namespace-wide Flux read access.
 func (w *NamespaceWatcher) SetFluxStatusKustomizationName(name string) {
+	if w.fluxCollector == nil {
+		return
+	}
 	fluxSource, ok := w.source.(FluxSource)
 	if !ok {
 		return
@@ -119,7 +122,7 @@ func (w *NamespaceWatcher) SetFluxStatusKustomizationName(name string) {
 // environment's trusted Kustomization identity instead of listing a shared
 // Flux namespace.
 func (w *NamespaceWatcher) SetFluxStatusEnvironmentScoped(enabled bool) {
-	if !enabled {
+	if !enabled || w.fluxCollector == nil {
 		return
 	}
 	fluxSource, ok := w.source.(FluxSource)
