@@ -16,6 +16,7 @@ import (
 type ResourceDiscoveryScanner struct {
 	source      *KubernetesNamespaceSource
 	readSecrets bool
+	readFlux    bool
 }
 
 type ResourceScanResult struct {
@@ -32,7 +33,13 @@ func NewResourceDiscoveryScanner(source *KubernetesNamespaceSource, readSecrets 
 	if len(readSecrets) > 0 {
 		enabled = readSecrets[0]
 	}
-	return &ResourceDiscoveryScanner{source: source, readSecrets: enabled}
+	return &ResourceDiscoveryScanner{source: source, readSecrets: enabled, readFlux: true}
+}
+
+// SetReadFlux aligns optional controller inventory with the installed RBAC.
+// It does not disable observation of workloads or required dependency checks.
+func (s *ResourceDiscoveryScanner) SetReadFlux(enabled bool) {
+	s.readFlux = enabled
 }
 
 func (s *ResourceDiscoveryScanner) Scan(ctx context.Context, namespaces []string) (ResourceScanResult, error) {
@@ -101,6 +108,9 @@ func (s *ResourceDiscoveryScanner) Scan(ctx context.Context, namespaces []string
 	}
 
 	fluxNamespaces := normalizeNamespaces(append(append([]string(nil), normalizedNamespaces...), s.source.FluxNamespace()))
+	if !s.readFlux {
+		fluxNamespaces = nil
+	}
 	for _, namespace := range fluxNamespaces {
 		releases, warning, err := s.listHelmReleases(ctx, namespace)
 		if err != nil {
@@ -203,12 +213,18 @@ func (s *ResourceDiscoveryScanner) Scan(ctx context.Context, namespaces []string
 	sort.Strings(warnings)
 	graph := BuildServiceGraph(items)
 	observed := domain.ObservedInventoryFromSnapshots(items, graph)
+	completeness := buildCompletenessReport(normalizedNamespaces, items, warnings)
+	if !s.readFlux {
+		for i := range completeness.Namespaces {
+			completeness.Namespaces[i].Excluded = []string{"GitRepository: outside configured Flux discovery scope", "HelmRelease: outside configured Flux discovery scope", "Kustomization: outside configured Flux discovery scope"}
+		}
+	}
 	return ResourceScanResult{
 		Snapshots:              items,
 		ServiceGraph:           graph,
 		ServiceEnvs:            BuildServiceEnvironmentVariables(items, graph),
 		PermissionWarnings:     deduplicateStrings(warnings),
-		Completeness:           buildCompletenessReport(normalizedNamespaces, items, warnings),
+		Completeness:           completeness,
 		SourceHealthDiagnostic: observed.Items,
 	}, nil
 }

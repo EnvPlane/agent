@@ -46,6 +46,7 @@ type Config struct {
 	RequireEnvironmentLabel     bool
 	ExcludedNamespaces          []string
 	ReadSecrets                 bool
+	ReadFlux                    bool
 	FluxNamespace               string
 	FluxStatusEnabled           bool
 	FluxStatusKustomizationName string
@@ -91,6 +92,7 @@ func (c Config) CapabilityConfigFingerprint() string {
 		"fluxStatusKustomizationName=" + strings.TrimSpace(c.FluxStatusKustomizationName),
 		"fluxStatusEnvironmentScoped=" + strconv.FormatBool(c.FluxStatusEnvironmentScoped),
 		"readSecrets=" + strconv.FormatBool(c.ReadSecrets),
+		"readFlux=" + strconv.FormatBool(c.ReadFlux),
 		"loadBalancerCapability=" + strings.ToLower(strings.TrimSpace(c.LoadBalancerCapability)),
 	}, "\x00")
 	sum := sha256.Sum256([]byte(payload))
@@ -133,6 +135,7 @@ func ConfigFromEnv() Config {
 		RequireEnvironmentLabel: getenvBool("ENVPLANE_REQUIRE_ENVIRONMENT_LABEL", false),
 		ExcludedNamespaces:      excludedNamespaces,
 		ReadSecrets:             getenvBool("ENVPLANE_DISCOVERY_READ_SECRETS", false),
+		ReadFlux:                getenvBool("ENVPLANE_DISCOVERY_READ_FLUX", true),
 		FluxNamespace:           getenv("ENVPLANE_FLUX_NAMESPACE", "flux-system"),
 		// Preserve the legacy direct-binary behavior. Helm-managed Agents set
 		// this explicitly from their backend-specific RBAC contract.

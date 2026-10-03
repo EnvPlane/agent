@@ -340,7 +340,9 @@ func runResourceScanTick(ctx context.Context, cfg clusteragent.Config, reporter 
 	if err != nil || task == nil || len(task.Namespaces) == 0 {
 		return err
 	}
-	result, err := clusteragent.NewResourceDiscoveryScanner(source, cfg.ReadSecrets).Scan(ctx, task.Namespaces)
+	scanner := clusteragent.NewResourceDiscoveryScanner(source, cfg.ReadSecrets)
+	scanner.SetReadFlux(cfg.ReadFlux)
+	result, err := scanner.Scan(ctx, task.Namespaces)
 	if err != nil {
 		if reportErr := reporter.ReportResourceScanFailure(ctx, cfg, task); reportErr != nil {
 			return fmt.Errorf("scan resources: %w; report scan failure: %v", err, reportErr)

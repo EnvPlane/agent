@@ -1,5 +1,15 @@
 # Align resource discovery scope with managed Flux RBAC
 
+## Local implementation and verification
+Agent now consumes ENVPLANE_DISCOVERY_READ_FLUX, emitted by the chart from
+rbac.discovery.readFlux. Disabled optional Flux inventory is explicitly Excluded
+in completeness; required workload permission failures still block completeness.
+Legacy binary default remains enabled. UI Resource review displays incomplete
+coverage and excluded kinds without embedded Kubernetes response bodies.
+An opt-in live scanner test through a localhost proxy impersonating app2 Agent
+found all ten resources with complete=true and no extra Flux rights. No deployed
+image was modified: production end-to-end rescan awaits new Agent/chart/UI builds.
+
 ## Reproduction
 On umbrella 0.4.573, app2's completed scan reports ten resources but completeness
 is false. Both app2-backend and app2-frontend report forbidden LIST requests for
