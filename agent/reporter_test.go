@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"fmt"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -48,6 +49,52 @@ func TestHTTPStatusReporterPostsEnvironmentStatus(t *testing.T) {
 	}
 	if gotPayload.ClusterID != "dev-us" {
 		t.Fatalf("cluster id = %q", gotPayload.ClusterID)
+	}
+}
+
+func TestHTTPStatusReporterCarriesCleanupMetadataInBothTransports(t *testing.T) {
+	for _, batch := range []bool{false, true} {
+		t.Run(fmt.Sprintf("batch-%t", batch), func(t *testing.T) {
+			var got *domain.NamespaceCleanupObservation
+			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				if batch {
+					var payload struct {
+						Items []batchStatusItem `json:"items"`
+					}
+					if err := json.NewDecoder(r.Body).Decode(&payload); err != nil {
+						t.Error(err)
+						return
+					}
+					if len(payload.Items) != 1 {
+						t.Error("missing status item")
+						return
+					}
+					got = payload.Items[0].NamespaceCleanup
+				} else {
+					var payload domain.UpdateEnvironmentStatusRequest
+					if err := json.NewDecoder(r.Body).Decode(&payload); err != nil {
+						t.Error(err)
+						return
+					}
+					got = payload.NamespaceCleanup
+				}
+			}))
+			defer server.Close()
+			reporter := NewHTTPStatusReporterForAgent(server.URL, "agent-token", "dev-us", "agent-1", time.Second)
+			report := NamespaceStatusReport{EnvironmentID: "preview", Status: domain.StatusTerminating, NamespaceCleanup: &domain.NamespaceCleanupObservation{Namespace: "preview", Finalizers: []string{"kubernetes"}}}
+			var err error
+			if batch {
+				err = reporter.ReportNamespaceStatusBatch(context.Background(), []NamespaceStatusReport{report})
+			} else {
+				err = reporter.ReportNamespaceStatus(context.Background(), report)
+			}
+			if err != nil {
+				t.Fatal(err)
+			}
+			if got == nil || got.Namespace != "preview" || len(got.Finalizers) != 1 {
+				t.Fatalf("missing cleanup observation: %#v", got)
+			}
+		})
 	}
 }
 

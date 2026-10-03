@@ -120,11 +120,15 @@ func (t *rateLimitedTransport) RoundTrip(req *http.Request) (*http.Response, err
 }
 
 type Namespace struct {
+	Spec struct {
+		Finalizers []string `json:"finalizers"`
+	} `json:"spec"`
 	Metadata NamespaceMetadata `json:"metadata"`
 	Status   NamespaceStatus   `json:"status"`
 }
 
 type NamespaceMetadata struct {
+	Finalizers        []string          `json:"finalizers"`
 	Name              string            `json:"name"`
 	Labels            map[string]string `json:"labels"`
 	DeletionTimestamp string            `json:"deletionTimestamp"`

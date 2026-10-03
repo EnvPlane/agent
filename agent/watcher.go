@@ -522,13 +522,23 @@ func buildNamespaceStatusReport(eventType string, namespace Namespace, requireEn
 	}
 
 	status := namespaceStatus(eventType, namespace)
+	var cleanup *domain.NamespaceCleanupObservation
+	if status == domain.StatusTerminating {
+		finalizers := append([]string{}, namespace.Metadata.Finalizers...)
+		finalizers = append(finalizers, namespace.Spec.Finalizers...)
+		if len(finalizers) > 50 {
+			finalizers = finalizers[:50]
+		}
+		cleanup = &domain.NamespaceCleanupObservation{Namespace: namespace.Metadata.Name, Finalizers: finalizers}
+	}
 	return NamespaceStatusReport{
-		EnvironmentID: environmentID,
-		Namespace:     namespace.Metadata.Name,
-		Status:        status,
-		Message:       namespaceStatusMessage(eventType, namespace, status),
-		EventType:     eventType,
-		Phase:         namespace.Status.Phase,
+		NamespaceCleanup: cleanup,
+		EnvironmentID:    environmentID,
+		Namespace:        namespace.Metadata.Name,
+		Status:           status,
+		Message:          namespaceStatusMessage(eventType, namespace, status),
+		EventType:        eventType,
+		Phase:            namespace.Status.Phase,
 	}, true, legacyFallback
 }
 

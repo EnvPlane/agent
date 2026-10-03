@@ -36,10 +36,11 @@ func (e *APIError) Error() string {
 }
 
 type batchStatusItem struct {
-	EnvironmentID string                   `json:"environmentId"`
-	Status        domain.EnvironmentStatus `json:"status"`
-	Message       string                   `json:"message,omitempty"`
-	ClusterID     string                   `json:"clusterId,omitempty"`
+	NamespaceCleanup *domain.NamespaceCleanupObservation `json:"namespaceCleanup,omitempty"`
+	EnvironmentID    string                              `json:"environmentId"`
+	Status           domain.EnvironmentStatus            `json:"status"`
+	Message          string                              `json:"message,omitempty"`
+	ClusterID        string                              `json:"clusterId,omitempty"`
 }
 
 func (r *HTTPStatusReporter) ReportNamespaceStatusBatch(ctx context.Context, reports []NamespaceStatusReport) error {
@@ -51,7 +52,7 @@ func (r *HTTPStatusReporter) ReportNamespaceStatusBatch(ctx context.Context, rep
 		if strings.TrimSpace(report.EnvironmentID) == "" {
 			return fmt.Errorf("environment id is required")
 		}
-		items = append(items, batchStatusItem{EnvironmentID: report.EnvironmentID, Status: report.Status, Message: report.Message, ClusterID: r.clusterID})
+		items = append(items, batchStatusItem{EnvironmentID: report.EnvironmentID, Status: report.Status, Message: report.Message, ClusterID: r.clusterID, NamespaceCleanup: report.NamespaceCleanup})
 	}
 	if err := r.sdkClient.DoJSON(ctx, http.MethodPost, "/api/v1/environments/status:batch", map[string]any{"items": items}, nil, ""); err != nil {
 		return fmt.Errorf("report namespace status batch failed: %w", err)
@@ -142,9 +143,10 @@ func (r *HTTPStatusReporter) ReportNamespaceStatus(ctx context.Context, report N
 		return fmt.Errorf("environment id is required")
 	}
 	payload := domain.UpdateEnvironmentStatusRequest{
-		Status:    report.Status,
-		Message:   report.Message,
-		ClusterID: r.clusterID,
+		NamespaceCleanup: report.NamespaceCleanup,
+		Status:           report.Status,
+		Message:          report.Message,
+		ClusterID:        r.clusterID,
 	}
 	path := "/api/v1/environments/" + url.PathEscape(report.EnvironmentID) + "/status"
 	if err := r.sdkClient.DoJSON(ctx, http.MethodPost, path, payload, nil, ""); err != nil {
