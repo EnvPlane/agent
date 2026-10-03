@@ -34,6 +34,14 @@ Test readFlux=false, exact source GET, selected-base Flux discovery, and denied
 required kinds. Repeat a live rescan and compile-readiness check.
 
 ## Related configuration blockers
-app webhook still uses an expired previous Cloudflare callback; re-registration
-and delivery proof are needed. app2 backend mounts backend-data PVC at /data;
+The expired app Cloudflare callback was replaced through Settings; webhook
+registration and test delivery now report Verified and survive page refresh.
+This configuration recovery is not deployment acceptance of the scanner fix.
+app2 backend mounts backend-data PVC at /data;
 do not ignore it merely to finish review or clone base application data.
+
+## Published source status
+Agent implementation commit 88be3f8 is on main; Agent CI, brand guard and image
+publication succeeded. Chart 0.2.36 and frontend coverage fixes are committed
+in their repositories. Full managed Agent rescan still requires the compatible
+release to be installed. Do not mark that live acceptance complete prematurely.
