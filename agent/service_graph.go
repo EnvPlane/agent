@@ -219,6 +219,9 @@ func buildResourceDependencyPolicies(snapshots []domain.ResourceSnapshot) []doma
 	policies := make([]domain.ResourceDependencyPolicy, 0, len(snapshots)); for _, snapshot := range snapshots {
 		strategy, reason, required := domain.ResourcePolicyClone, "workload-owned desired state defaults to clone", false
 		switch snapshot.Kind { case "Secret": strategy, reason, required = domain.ResourcePolicyUnsupported, "Secret materialization is deferred to EP-TPL-005", true; case "PersistentVolumeClaim": strategy, reason, required = domain.ResourcePolicyUnsupported, "PVC materialization is deferred to EP-TPL-006", true; case "Pod", "ReplicaSet", "ControllerRevision", "Endpoint", "EndpointSlice", "Event", "Lease": strategy, reason = domain.ResourcePolicyIgnore, "runtime child is never part of desired state"; case "Service", "Ingress", "ConfigMap", "ServiceAccount", "ResourceQuota", "LimitRange", "NetworkPolicy", "HorizontalPodAutoscaler", "PodDisruptionBudget": strategy, reason = domain.ResourcePolicyClone, "selected desired-state resource defaults to clone" }
+		if snapshot.Kind == "PersistentVolumeClaim" {
+			reason = "Choose an explicit PVC strategy; mock provisions new empty feature storage without copying base data"
+		}
 		policies = append(policies, domain.ResourceDependencyPolicy{ResourceID: serviceGraphNodeID(snapshot.Kind, snapshot.Namespace, snapshot.Name), Kind: snapshot.Kind, Namespace: snapshot.Namespace, Name: snapshot.Name, Strategy: strategy, Defaulted: true, Reason: reason, Required: required})
 	}; sort.Slice(policies, func(i,j int) bool { return policies[i].ResourceID < policies[j].ResourceID }); return policies
 }
