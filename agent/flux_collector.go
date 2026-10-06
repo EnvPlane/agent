@@ -61,15 +61,14 @@ func (c *FluxStatusCollector) collectEnvironment(ctx context.Context, environmen
 	if err != nil {
 		return domain.FluxStatus{}, err
 	}
-	helmReleases, err := c.source.ListHelmReleases(ctx, namespace.Metadata.Name)
-	if err != nil {
-		return domain.FluxStatus{}, err
-	}
 	kustomizations := []FluxKustomization(nil)
 	if strings.TrimSpace(item.Metadata.Name) != "" {
 		kustomizations = []FluxKustomization{item}
 	}
-	return BuildFluxStatus(environmentID, namespace, kustomizations, helmReleases), nil
+	// Environment-scoped manifest deployments are owned and health-checked by
+	// this exact Kustomization. Listing unrelated HelmRelease objects requires
+	// unnecessary privileges and must not suppress its authenticated report.
+	return BuildFluxStatus(environmentID, namespace, kustomizations, nil), nil
 }
 
 func (c *FluxStatusCollector) kustomizations(ctx context.Context) ([]FluxKustomization, error) {

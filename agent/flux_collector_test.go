@@ -139,6 +139,9 @@ func TestEnvironmentFluxStatusCollectorGetsOnlyCurrentEnvironment(t *testing.T) 
 	if source.kustomizationName != "checkout-42.generic" {
 		t.Fatalf("environment Kustomization GET = %q", source.kustomizationName)
 	}
+	if source.helmReleaseNamespace != "" {
+		t.Fatal("environment-scoped collector must not list HelmRelease objects")
+	}
 	if status.Status != domain.StatusFailed || len(status.Kustomizations) != 1 || !status.Kustomizations[0].Failed {
 		t.Fatalf("status = %#v", status)
 	}
