@@ -766,13 +766,21 @@ func (s *KubernetesNamespaceSource) ListCRDNames(ctx context.Context) ([]string,
 }
 
 func (s *KubernetesNamespaceSource) ListStorageClasses(ctx context.Context) ([]string, error) {
+	names, _, err := s.listStorageClassCapabilities(ctx)
+	return names, err
+}
+
+func (s *KubernetesNamespaceSource) listStorageClassCapabilities(ctx context.Context) ([]string, []string, error) {
 	type storageClassItem struct {
 		Metadata struct {
-			Name string `json:"name"`
+			Name        string            `json:"name"`
+			Annotations map[string]string `json:"annotations"`
 		} `json:"metadata"`
+		Provisioner string `json:"provisioner"`
 	}
 	endpoint := s.apiURL + "/apis/storage.k8s.io/v1/storageclasses"
 	names := make([]string, 0)
+	flags := make([]string, 0)
 	err := s.listPages(ctx, endpoint, "storageclasses.storage.k8s.io", func(raw json.RawMessage) error {
 		var item storageClassItem
 		if err := json.Unmarshal(raw, &item); err != nil {
@@ -780,14 +788,21 @@ func (s *KubernetesNamespaceSource) ListStorageClasses(ctx context.Context) ([]s
 		}
 		if name := strings.TrimSpace(item.Metadata.Name); name != "" {
 			names = append(names, name)
+			if provisioner := strings.TrimSpace(item.Provisioner); provisioner != "" {
+				flags = append(flags, "storageClass."+name+".provisioner="+provisioner)
+			}
+			if item.Metadata.Annotations["storageclass.kubernetes.io/is-default-class"] == "true" {
+				flags = append(flags, "storageClass."+name+".default=true")
+			}
 		}
 		return nil
 	})
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 	sort.Strings(names)
-	return names, nil
+	sort.Strings(flags)
+	return names, flags, nil
 }
 
 func kubernetesListError(resource string, statusCode int, body []byte) error {

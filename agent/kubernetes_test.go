@@ -377,7 +377,7 @@ func TestKubernetesNamespaceSourceDiscoversCapabilities(t *testing.T) {
 		case "/apis/apiextensions.k8s.io/v1/customresourcedefinitions":
 			_ = json.NewEncoder(w).Encode(map[string]any{"items": []any{map[string]any{"metadata": map[string]string{"name": "kustomizations.kustomize.toolkit.fluxcd.io"}}}})
 		case "/apis/storage.k8s.io/v1/storageclasses":
-			_ = json.NewEncoder(w).Encode(map[string]any{"items": []any{map[string]any{"metadata": map[string]string{"name": "standard"}}}})
+			_ = json.NewEncoder(w).Encode(map[string]any{"items": []any{map[string]any{"metadata": map[string]any{"name": "standard", "annotations": map[string]string{"storageclass.kubernetes.io/is-default-class": "true"}}, "provisioner": "k8s.io/minikube-hostpath"}}})
 		case "/api/v1", "/apis/apps/v1", "/apis/kustomize.toolkit.fluxcd.io/v1", "/apis/helm.toolkit.fluxcd.io/v2":
 			_ = json.NewEncoder(w).Encode(map[string]string{"kind": "APIResourceList"})
 		default:
@@ -392,7 +392,7 @@ func TestKubernetesNamespaceSourceDiscoversCapabilities(t *testing.T) {
 		t.Fatalf("discover capabilities: %v", err)
 	}
 
-	expected := []string{"apps-v1", "core-v1", "flux-helm-v2", "flux-kustomize-v1", "services.loadBalancer=unknown"}
+	expected := []string{"apps-v1", "core-v1", "flux-helm-v2", "flux-kustomize-v1", "services.loadBalancer=unknown", "storageClass.standard.default=true", "storageClass.standard.provisioner=k8s.io/minikube-hostpath"}
 	if capabilities.KubernetesVersion != "v1.30.1" {
 		t.Fatalf("version = %q", capabilities.KubernetesVersion)
 	}
@@ -410,6 +410,11 @@ func TestKubernetesNamespaceSourceDiscoversCapabilities(t *testing.T) {
 	}
 	if got, want := capabilities.Report.StorageClasses, []string{"standard"}; !reflect.DeepEqual(got, want) {
 		t.Fatalf("storage classes = %#v want %#v", got, want)
+	}
+	for _, flag := range []string{"storageClass.standard.provisioner=k8s.io/minikube-hostpath", "storageClass.standard.default=true"} {
+		if !containsValue(capabilities.Report.CapabilityFlags, flag) {
+			t.Fatalf("missing storage capability %q", flag)
+		}
 	}
 	if !containsValue(capabilities.Report.CapabilityFlags, "services.loadBalancer=unknown") {
 		t.Fatalf("load balancer capability flags = %#v", capabilities.Report.CapabilityFlags)

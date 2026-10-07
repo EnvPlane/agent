@@ -15,7 +15,7 @@ import (
 const (
 	defaultServiceAccountToken = "/var/run/secrets/kubernetes.io/serviceaccount/token"
 	defaultServiceAccountCA    = "/var/run/secrets/kubernetes.io/serviceaccount/ca.crt"
-	defaultExcludedNamespaces  = "default,kube-system,kube-public,kube-node-lease,local-path-storage,ingress-nginx,kubernetes-dashboard,envplane,envplane-system"
+	defaultExcludedNamespaces  = "default,kube-system,kube-public,kube-node-lease,local-path-storage,envplane-local-path-storage,ingress-nginx,kubernetes-dashboard,envplane,envplane-system"
 	defaultKubernetesQPS       = 20.0
 	defaultKubernetesBurst     = 40
 )

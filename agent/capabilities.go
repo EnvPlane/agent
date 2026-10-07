@@ -92,11 +92,14 @@ func (s *KubernetesNamespaceSource) DiscoverCapabilities(ctx context.Context) (C
 		report.ExternalDNSPresent = containsValue(crds, "dnsendpoints.externaldns.k8s.io")
 	}
 	capabilities[loadBalancerCapabilityPrefix+s.detectLoadBalancerCapability(crds)] = struct{}{}
-	storageClasses, err := s.ListStorageClasses(ctx)
+	storageClasses, storageFlags, err := s.listStorageClassCapabilities(ctx)
 	if err != nil {
 		report.PermissionWarnings = append(report.PermissionWarnings, fmt.Sprintf("list storage classes failed: %v", err))
 	} else {
 		report.StorageClasses = storageClasses
+		for _, flag := range storageFlags {
+			capabilities[flag] = struct{}{}
+		}
 	}
 	items := make([]string, 0, len(capabilities))
 	for capability := range capabilities {
