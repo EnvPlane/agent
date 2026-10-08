@@ -1,7 +1,7 @@
 # Candidate storage/network telemetry source closure
 
-Status: local implementation; actual closure awaits parent-controlled migration
-and reviewed source/exporter deployment. No push or operator changes here.
+Status: candidate private telemetry runtime deployed; no push. Parent-controlled
+normal component/ownership rollout and persisted profile activation still needed.
 
 ## Source problems
 
@@ -31,3 +31,17 @@ and no reliance on node NIC/filesystem totals. GPU remains no_devices where
 verified; no hardware or provider invoice claim is introduced.
 
 Implementation and proposed serialized recipe: docs/finops-candidate-telemetry.md.
+
+## Actual target evidence and remaining blockers
+
+2026-10-08 15:24 UTC: finops-private revision 1 deployed, private TLS scrape
+cAdvisor UP. Verified kubelet hostname/CA and 512 non-root Pod UID network
+series. Three non-root RO PVC exporters are Running; all return 503 because the
+five target PVCs have no explicit component labels. This is fail-closed, not a
+zero usage reading. Baseline namespace project/environment labels are absent.
+
+Finish through normal workload/ownership configuration; do not manually guess
+baseline environment IDs. Activate the persisted RemoteCluster.finops profile
+with local API/Agent artifacts, then prove two distinct authenticated ledger
+windows with correct new target UIDs. Until then storage.used coverage and full
+tenant network ingestion remain unconfirmed; no prices/invoice can be inferred.

@@ -1,7 +1,8 @@
 # Candidate containerd telemetry and reviewed PVC usage exporter
 
-No source freeze, cutover, chart/deployment/RBAC change or data migration is
-performed by this implementation. Parent coordinates all operator work.
+No source freeze, cutover, data migration or routing change is performed here.
+The reviewed private telemetry runtime is candidate-only; parent coordinates
+management rollout and normal workload/ownership changes.
 
 ## Desired-state integration
 
