@@ -27,6 +27,9 @@ const loadBalancerCapabilityPrefix = "services.loadBalancer="
 func (s *KubernetesNamespaceSource) DiscoverCapabilities(ctx context.Context) (ClusterCapabilities, error) {
 	version := s.discoverKubernetesVersion(ctx)
 	capabilities := map[string]struct{}{}
+	// API availability cannot prove enforcement. Discovery is read-only and
+	// must not install a policy engine or create probe workloads implicitly.
+	capabilities["networkPolicy.enforcement=unknown"] = struct{}{}
 	report := domain.ClusterCapabilityReport{
 		KubernetesVersion: version,
 	}

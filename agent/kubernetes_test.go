@@ -392,7 +392,7 @@ func TestKubernetesNamespaceSourceDiscoversCapabilities(t *testing.T) {
 		t.Fatalf("discover capabilities: %v", err)
 	}
 
-	expected := []string{"apps-v1", "core-v1", "flux-helm-v2", "flux-kustomize-v1", "services.loadBalancer=unknown", "storageClass.standard.default=true", "storageClass.standard.provisioner=k8s.io/minikube-hostpath"}
+	expected := []string{"apps-v1", "core-v1", "flux-helm-v2", "flux-kustomize-v1", "networkPolicy.enforcement=unknown", "services.loadBalancer=unknown", "storageClass.standard.default=true", "storageClass.standard.provisioner=k8s.io/minikube-hostpath"}
 	if capabilities.KubernetesVersion != "v1.30.1" {
 		t.Fatalf("version = %q", capabilities.KubernetesVersion)
 	}
