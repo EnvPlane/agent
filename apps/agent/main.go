@@ -29,6 +29,11 @@ func main() {
 		runAgentInstallCheck(logger)
 	case "agent-connectivity-check":
 		runAgentConnectivityCheck(logger)
+	case "finops-pvc-usage-exporter":
+		if err := runPVCUsageExporter(logger); err != nil {
+			logger.Error("PVC usage exporter stopped", "error", err)
+			os.Exit(1)
+		}
 	default:
 		logger.Error("unknown agent command", "command", command, "usage", "agent|agent-install-check|agent-connectivity-check")
 		os.Exit(2)
