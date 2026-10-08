@@ -71,6 +71,9 @@ func (s *KubernetesNamespaceSource) CollectBaselinePodUsage(ctx context.Context,
 	if s.baselineGET(ctx, "/apis/metrics.k8s.io/v1beta1/namespaces/"+url.PathEscape(b.Namespace)+"/pods/"+url.PathEscape(b.ResourceName), &m) != nil {
 		return nil, errors.New("baseline Pod metrics unavailable")
 	}
+	if (m.Metadata.UID != "" && m.Metadata.UID != b.ResourceUID) || (m.Metadata.Namespace != "" && m.Metadata.Namespace != b.Namespace) {
+		return nil, errors.New("baseline Pod metrics identity mismatch")
+	}
 	window, err := time.ParseDuration(m.Window)
 	if err != nil || window <= 0 || window > 5*time.Minute || m.Metadata.Name != b.ResourceName || start.Before(m.Timestamp.Add(-window)) || end.After(m.Timestamp) {
 		return nil, errors.New("baseline Pod metrics window gap")

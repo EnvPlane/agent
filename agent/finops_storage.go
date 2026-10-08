@@ -40,6 +40,7 @@ type finOpsPVC struct {
 		Name      string            `json:"name"`
 		UID       string            `json:"uid"`
 		CreatedAt time.Time         `json:"creationTimestamp"`
+		DeletedAt *time.Time        `json:"deletionTimestamp"`
 		Labels    map[string]string `json:"labels"`
 	} `json:"metadata"`
 	Spec struct {

@@ -32,12 +32,15 @@ type finOpsPod struct {
 		Name      string            `json:"name"`
 		UID       string            `json:"uid"`
 		CreatedAt time.Time         `json:"creationTimestamp"`
+		DeletedAt *time.Time        `json:"deletionTimestamp"`
 		Labels    map[string]string `json:"labels"`
 	} `json:"metadata"`
 }
 type finOpsMetric struct {
 	Metadata struct {
-		Name string `json:"name"`
+		Name      string `json:"name"`
+		UID       string `json:"uid"`
+		Namespace string `json:"namespace"`
 	} `json:"metadata"`
 	Timestamp  time.Time `json:"timestamp"`
 	Window     string    `json:"window"`

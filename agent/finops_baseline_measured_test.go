@@ -6,6 +6,7 @@ import (
 	"github.com/envplane/contracts/domain"
 	"net/http"
 	"net/http/httptest"
+	"sync/atomic"
 	"testing"
 	"time"
 )
@@ -16,13 +17,18 @@ func TestBaselineMeasuredPinnedPVCAndPod(t *testing.T) {
 	for _, kind := range []string{"PersistentVolumeClaim", "Pod"} {
 		t.Run(kind, func(t *testing.T) {
 			pin := domain.BaseResourceBinding{BaseResourcePin: domain.BaseResourcePin{Namespace: "base", ResourceKind: kind, ResourceName: "data", ResourceUID: "11111111-1111-4111-8111-111111111111", ComponentID: "db"}, ID: "baseline", Version: 1, State: "active", ProjectID: "p", ClusterID: "c", ClusterGeneration: 1, CreatedAt: start.Add(-time.Hour)}
+			var wrongMetricUID atomic.Bool
 			kube := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 				if r.URL.Path == "/api/v1/namespaces/base" {
 					_ = json.NewEncoder(w).Encode(map[string]any{"metadata": map[string]any{"name": "base"}})
 					return
 				}
 				if r.URL.Path == "/apis/metrics.k8s.io/v1beta1/namespaces/base/pods/data" {
-					_ = json.NewEncoder(w).Encode(map[string]any{"metadata": map[string]any{"name": "data"}, "timestamp": now, "window": "1m", "containers": []any{map[string]any{"name": "db", "usage": map[string]string{"cpu": "1", "memory": "1Gi"}}}})
+					uid := pin.ResourceUID
+					if wrongMetricUID.Load() {
+						uid = "22222222-2222-4222-8222-222222222222"
+					}
+					_ = json.NewEncoder(w).Encode(map[string]any{"metadata": map[string]any{"name": "data", "namespace": "base", "uid": uid}, "timestamp": now, "window": "1m", "containers": []any{map[string]any{"name": "db", "usage": map[string]string{"cpu": "1", "memory": "1Gi"}}}})
 					return
 				}
 				meta := map[string]any{"name": "data", "uid": pin.ResourceUID, "creationTimestamp": start.Add(-time.Hour), "labels": map[string]string{"app.kubernetes.io/component": "db"}}
@@ -51,6 +57,10 @@ func TestBaselineMeasuredPinnedPVCAndPod(t *testing.T) {
 				}
 				if _, err := source.CollectBaselinePodUsage(context.Background(), pin, "p", "c", 1, start.Add(-time.Second), now); err == nil {
 					t.Fatal("metrics gap invented")
+				}
+				wrongMetricUID.Store(true)
+				if _, err := source.CollectBaselinePodUsage(context.Background(), pin, "p", "c", 1, start, now); err == nil {
+					t.Fatal("foreign metric UID accepted")
 				}
 				return
 			}

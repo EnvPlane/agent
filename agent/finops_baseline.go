@@ -108,6 +108,9 @@ func (s *KubernetesNamespaceSource) VerifyBaselineBinding(ctx context.Context, b
 			return err
 		}
 		name = pvc.Metadata.Name
+		if pvc.Metadata.DeletedAt != nil || pvc.Metadata.Labels[environmentIDLabel] != "" {
+			return errors.New("baseline PVC deleting or environment-owned")
+		}
 		uid = pvc.Metadata.UID
 		component, _ = FinOpsComponentID(pvc.Metadata.Labels)
 	case "Pod":
@@ -115,7 +118,7 @@ func (s *KubernetesNamespaceSource) VerifyBaselineBinding(ctx context.Context, b
 		if err := s.baselineGET(ctx, "/api/v1/namespaces/"+url.PathEscape(b.Namespace)+"/pods/"+url.PathEscape(b.ResourceName), &pod); err != nil {
 			return err
 		}
-		if pod.Spec.HostNetwork || finOpsTelemetryPod(pod.Metadata.Labels) {
+		if pod.Spec.HostNetwork || finOpsTelemetryPod(pod.Metadata.Labels) || pod.Metadata.DeletedAt != nil || pod.Metadata.Labels[environmentIDLabel] != "" {
 			return errors.New("shared or unallocated baseline Pod")
 		}
 		name = pod.Metadata.Name
@@ -130,11 +133,17 @@ func (s *KubernetesNamespaceSource) VerifyBaselineBinding(ctx context.Context, b
 	return nil
 }
 func (s *KubernetesNamespaceSource) baselineGET(ctx context.Context, path string, out any) error {
+	if s == nil || s.client == nil {
+		return errors.New("baseline metadata unavailable")
+	}
 	r, err := s.newKubernetesGET(ctx, s.apiURL+path)
 	if err != nil {
 		return errors.New("baseline metadata unavailable")
 	}
-	response, err := s.client.Do(r)
+	client := *s.client
+	client.Timeout = 15 * time.Second
+	client.CheckRedirect = func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }
+	response, err := client.Do(r)
 	if err != nil {
 		return errors.New("baseline metadata unavailable")
 	}
