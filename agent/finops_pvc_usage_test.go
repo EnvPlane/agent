@@ -59,15 +59,28 @@ func TestPinnedPVCUsageNeverFollowsSymlink(t *testing.T) {
 	if err := os.Mkdir(mount, 0o700); err != nil {
 		t.Fatal(err)
 	}
-	if err := os.Symlink(t.TempDir(), filepath.Join(mount, "escape")); err != nil {
+	external := t.TempDir()
+	if err := os.WriteFile(filepath.Join(external, "outside-data"), []byte(strings.Repeat("outside", 100000)), 0600); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Symlink(external, filepath.Join(mount, "escape")); err != nil {
 		t.Fatal(err)
 	}
 	sampler, err := NewPinnedPVCUsageSampler(base, []PinnedPVCUsageRef{ref}, func(context.Context, PinnedPVCUsageRef) error { return nil })
 	if err != nil {
 		t.Fatal(err)
 	}
-	if readings, err := sampler.Sample(context.Background()); err == nil || readings != nil {
-		t.Fatal("dataset symlink treated as complete")
+	readings, err := sampler.Sample(context.Background())
+	if err != nil || len(readings) != 1 || readings[0].AllocatedBytes >= 700000 {
+		t.Fatalf("external symlink target counted: %+v %v", readings, err)
+	}
+	before := readings[0].AllocatedBytes
+	if err := os.WriteFile(filepath.Join(external, "outside-data"), []byte(strings.Repeat("outside", 200000)), 0600); err != nil {
+		t.Fatal(err)
+	}
+	readings, err = sampler.Sample(context.Background())
+	if err != nil || readings[0].AllocatedBytes != before {
+		t.Fatal("changing external data affected confined gauge", err)
 	}
 }
 

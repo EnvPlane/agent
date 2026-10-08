@@ -73,14 +73,13 @@ func (s *PinnedPVCUsageSampler) Sample(ctx context.Context) ([]PVCUsageReading, 
 			if entries > 100000 {
 				return errors.New("PVC metadata scan bound exceeded")
 			}
-			if entry.Type()&os.ModeSymlink != 0 {
-				return errors.New("PVC symlink prevents complete confined measurement")
-			}
+			// WalkDir never follows symlinks; DirEntry.Info describes the link
+			// inode itself. Count its allocation, not any referenced dataset.
 			info, e := entry.Info()
 			if e != nil {
 				return errors.New("PVC inode metadata unavailable")
 			}
-			if !info.Mode().IsRegular() && !info.IsDir() {
+			if !info.Mode().IsRegular() && !info.IsDir() && info.Mode()&os.ModeSymlink == 0 {
 				return nil
 			}
 			identity, bytes, e := finOpsAllocatedBlocks(info)
