@@ -21,7 +21,10 @@ import (
 type finOpsPod struct {
 	Spec struct {
 		Containers []struct {
-			Name string `json:"name"`
+			Name      string `json:"name"`
+			Resources struct {
+				Requests map[string]string `json:"requests"`
+			} `json:"resources"`
 		} `json:"containers"`
 	} `json:"spec"`
 	Metadata struct {

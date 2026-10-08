@@ -12,6 +12,10 @@ import (
 // RunFinOpsMetering keeps no fabricated backfill. After a restart collection
 // begins with fresh Metrics API windows, so gaps remain visible in the ledger.
 func RunFinOpsMetering(ctx context.Context, cfg Config, source *KubernetesNamespaceSource, reporter *HTTPStatusReporter, logger *slog.Logger) {
+	RunFinOpsMeteringWithDimensions(ctx, cfg, source, reporter, nil, logger)
+}
+
+func RunFinOpsMeteringWithDimensions(ctx context.Context, cfg Config, source *KubernetesNamespaceSource, reporter *HTTPStatusReporter, dimensions FinOpsDimensionSource, logger *slog.Logger) {
 	if source == nil || reporter == nil || cfg.BootstrapProjectID == "" || !strings.HasPrefix(cfg.ControlPlaneURL, "https://") {
 		return
 	}
@@ -24,6 +28,8 @@ func RunFinOpsMetering(ctx context.Context, cfg Config, source *KubernetesNamesp
 		if pending == nil {
 			batch, err := source.CollectFinOps(ctx, cfg.BootstrapProjectID, cfg.ClusterID, cfg.AgentID, time.Now().UTC())
 			if err == nil {
+				owned, _ := source.FinOpsOwnedPodInventory(ctx, cfg.BootstrapProjectID)
+				_ = source.AttachFinOpsDimensions(ctx, &batch, dimensions, owned)
 				pending = &batch
 			} else if logger != nil {
 				logger.Warn("FinOps collection unavailable")
