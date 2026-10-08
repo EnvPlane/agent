@@ -50,7 +50,7 @@ func (s *KubernetesNamespaceSource) CreateGeneratedSecret(ctx context.Context, a
 	if apply.Name == "" || strings.ContainsAny(apply.Name, "/\\") || apply.IdempotencyKey == "" {
 		return ErrMaterializationConflict
 	}
-	payload, err := json.Marshal(map[string]any{"apiVersion": "v1", "kind": "Secret", "metadata": map[string]any{"name": apply.Name, "namespace": apply.Namespace, "labels": apply.Labels, "annotations": apply.Annotations}, "type": apply.Type, "data": encodedSecretData(apply.Data)})
+	payload, err := json.Marshal(map[string]any{"apiVersion": "v1", "kind": "Secret", "metadata": map[string]any{"name": apply.Name, "namespace": apply.Namespace, "labels": apply.Labels, "annotations": apply.Annotations}, "type": apply.Type, "immutable": apply.Immutable, "data": encodedSecretData(apply.Data)})
 	if err != nil {
 		return err
 	}
@@ -74,6 +74,40 @@ func (s *KubernetesNamespaceSource) CreateGeneratedSecret(ctx context.Context, a
 	}
 	if resp.StatusCode != http.StatusCreated {
 		return fmt.Errorf("create generated credential denied: status=%d", resp.StatusCode)
+	}
+	return nil
+}
+
+func (s *KubernetesNamespaceSource) DeleteDatabaseCredential(ctx context.Context, namespace, name string, existing SecretRecord) error {
+	if err := s.validateWriteNamespace(namespace); err != nil || name == "" || strings.ContainsAny(name, "/\\") || existing.UID == "" || existing.ResourceVersion == "" {
+		return ErrDatabaseCredentialRecovery
+	}
+	payload, err := json.Marshal(map[string]any{"apiVersion": "v1", "kind": "DeleteOptions", "preconditions": map[string]string{"uid": existing.UID, "resourceVersion": existing.ResourceVersion}})
+	if err != nil {
+		return ErrDatabaseCredentialRecovery
+	}
+	endpoint := strings.TrimRight(s.apiURL, "/") + "/api/v1/namespaces/" + url.PathEscape(namespace) + "/secrets/" + url.PathEscape(name)
+	req, err := http.NewRequestWithContext(ctx, http.MethodDelete, endpoint, bytes.NewReader(payload))
+	if err != nil {
+		return ErrDatabaseCredentialRecovery
+	}
+	req.Header.Set("Content-Type", "application/json")
+	if s.token != "" {
+		req.Header.Set("Authorization", "Bearer "+s.token)
+	}
+	resp, err := s.client.Do(req)
+	if err != nil {
+		return ErrDatabaseCredentialRecovery
+	}
+	defer func() { _ = resp.Body.Close() }()
+	if resp.StatusCode == http.StatusConflict {
+		return ErrMaterializationConflict
+	}
+	if resp.StatusCode == http.StatusNotFound {
+		return nil
+	}
+	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+		return ErrDatabaseCredentialRecovery
 	}
 	return nil
 }

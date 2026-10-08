@@ -33,13 +33,17 @@ type MaterializationCommand struct {
 // SecretRecord intentionally contains only the fields needed to copy/apply a
 // Secret. It is never included in MaterializationCommand or status reports.
 type SecretRecord struct {
-	Type        string
-	Data        map[string][]byte
-	Labels      map[string]string
-	Annotations map[string]string
+	UID             string
+	ResourceVersion string
+	Immutable       bool
+	Type            string
+	Data            map[string][]byte
+	Labels          map[string]string
+	Annotations     map[string]string
 }
 
 type SecretApply struct {
+	Immutable      bool
 	Namespace      string
 	Name           string
 	Type           string
@@ -75,9 +79,10 @@ type MaterializationResult struct {
 }
 
 type SecretMaterializer struct {
-	client    SecretMaterializerClient
-	resolver  SecretSensitiveResolver
-	generator SecretGenerator
+	client         SecretMaterializerClient
+	resolver       SecretSensitiveResolver
+	generator      SecretGenerator
+	databaseEscrow *DatabaseCredentialEscrow
 }
 
 func NewSecretMaterializer(client SecretMaterializerClient, resolver SecretSensitiveResolver, generator SecretGenerator) (*SecretMaterializer, error) {
@@ -147,6 +152,19 @@ func (m *SecretMaterializer) Cleanup(ctx context.Context, command Materializatio
 			if err := m.requireNoDatabasePVCs(ctx, record.Namespace); err != nil {
 				return err
 			}
+			if m.databaseEscrow != nil {
+				if err := m.verifyEscrowBeforeCredentialCleanup(ctx, command, item, existing); err != nil {
+					return err
+				}
+			}
+			client, ok := m.client.(DatabaseCredentialDeletionClient)
+			if !ok {
+				return ErrDatabaseCredentialRecovery
+			}
+			if err := client.DeleteDatabaseCredential(ctx, record.Namespace, record.Name, existing); err != nil {
+				return err
+			}
+			continue
 		}
 		if err := m.client.DeleteSecret(ctx, record.Namespace, record.Name); err != nil {
 			return err

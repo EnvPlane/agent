@@ -95,6 +95,9 @@ func runAgent(logger *slog.Logger) {
 		runHeartbeat(ctx, cfg, reporter, source, logger, bootstrapRegistrationToken)
 	})
 	materializer, err := clusteragent.NewSecretMaterializer(source, nil, clusteragent.NewGeneratedSecretGenerator())
+	if err == nil {
+		err = clusteragent.ConfigureDatabaseCredentialEscrowFromEnv(materializer, source, cfg.ClusterID)
+	}
 	if err != nil {
 		logger.Error("failed to initialise secret materializer", "error", err)
 		os.Exit(1)

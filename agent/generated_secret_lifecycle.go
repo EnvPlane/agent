@@ -19,6 +19,10 @@ type DatabaseCredentialClient interface {
 	CreateGeneratedSecret(context.Context, SecretApply) error
 }
 
+type DatabaseCredentialDeletionClient interface {
+	DeleteDatabaseCredential(context.Context, string, string, SecretRecord) error
+}
+
 func isDatabaseGenerator(generator string) bool {
 	profile, _ := generatedSecretProfile(generator)
 	return len(generatedDatabasePasswordKeys(profile)) > 0
@@ -70,10 +74,16 @@ func (m *SecretMaterializer) applyGeneratedSecret(ctx context.Context, command M
 			}
 		}
 		// No write, randomness, or implicit rotation on restart/recreate/restore.
+		if m.databaseEscrow != nil && isDatabaseGenerator(item.Generator) {
+			return m.escrowDatabaseCredential(ctx, command, item, &existing, key)
+		}
 		return nil
 	}
 	if !errors.Is(err, ErrSecretNotFound) {
 		return err
+	}
+	if m.databaseEscrow != nil && isDatabaseGenerator(item.Generator) {
+		return m.escrowDatabaseCredential(ctx, command, item, nil, key)
 	}
 	if isDatabaseGenerator(item.Generator) {
 		if err := m.requireNoDatabasePVCs(ctx, item.TargetNamespace); err != nil {

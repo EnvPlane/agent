@@ -39,11 +39,14 @@ func (s *KubernetesNamespaceSource) GetSecret(ctx context.Context, namespace, na
 		return SecretRecord{}, fmt.Errorf("read approved Secret %s/%s denied: status=%d", namespace, name, response.StatusCode)
 	}
 	var raw struct {
-		Type     string            `json:"type"`
-		Data     map[string]string `json:"data"`
-		Metadata struct {
-			Labels      map[string]string `json:"labels"`
-			Annotations map[string]string `json:"annotations"`
+		Immutable bool              `json:"immutable"`
+		Type      string            `json:"type"`
+		Data      map[string]string `json:"data"`
+		Metadata  struct {
+			UID             string            `json:"uid"`
+			ResourceVersion string            `json:"resourceVersion"`
+			Labels          map[string]string `json:"labels"`
+			Annotations     map[string]string `json:"annotations"`
 		} `json:"metadata"`
 	}
 	if err := json.Unmarshal(body, &raw); err != nil {
@@ -57,7 +60,7 @@ func (s *KubernetesNamespaceSource) GetSecret(ctx context.Context, namespace, na
 		}
 		data[key] = decoded
 	}
-	return SecretRecord{Type: raw.Type, Data: data, Labels: raw.Metadata.Labels, Annotations: raw.Metadata.Annotations}, nil
+	return SecretRecord{UID: raw.Metadata.UID, ResourceVersion: raw.Metadata.ResourceVersion, Immutable: raw.Immutable, Type: raw.Type, Data: data, Labels: raw.Metadata.Labels, Annotations: raw.Metadata.Annotations}, nil
 }
 
 func (s *KubernetesNamespaceSource) ApplySecret(ctx context.Context, apply SecretApply) error {

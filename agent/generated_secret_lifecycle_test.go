@@ -31,6 +31,10 @@ func (f *credentialFake) CreateGeneratedSecret(ctx context.Context, apply Secret
 	return f.ApplySecret(ctx, apply)
 }
 
+func (f *credentialFake) DeleteDatabaseCredential(ctx context.Context, namespace, name string, _ SecretRecord) error {
+	return f.DeleteSecret(ctx, namespace, name)
+}
+
 func TestDatabaseCredentialLifecycleAcrossEngines(t *testing.T) {
 	for _, engine := range []string{"postgresql", "mysql", "mariadb", "mongodb", "redis"} {
 		t.Run(engine, func(t *testing.T) {

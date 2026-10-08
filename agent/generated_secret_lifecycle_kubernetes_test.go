@@ -2,6 +2,7 @@ package agent
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"net/http"
 	"net/http/httptest"
@@ -34,6 +35,45 @@ func TestCredentialPVCInventoryFailsClosed(t *testing.T) {
 			present, err := source.HasPersistentVolumeClaims(context.Background(), "approved")
 			if (err != nil) != tc.failure || present != tc.present {
 				t.Fatalf("present=%t failure=%t", present, err != nil)
+			}
+		})
+	}
+}
+
+func TestDatabaseCredentialCleanupRequiresExactUIDAndResourceVersion(t *testing.T) {
+	for _, status := range []int{200, 409, 403} {
+		t.Run(http.StatusText(status), func(t *testing.T) {
+			requests := 0
+			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				requests++
+				if r.Method != http.MethodDelete || r.URL.Path != "/api/v1/namespaces/approved/secrets/db" {
+					t.Error("unscoped deletion")
+				}
+				var options struct {
+					Preconditions struct {
+						UID             string `json:"uid"`
+						ResourceVersion string `json:"resourceVersion"`
+					} `json:"preconditions"`
+				}
+				if json.NewDecoder(r.Body).Decode(&options) != nil || options.Preconditions.UID != "secret-uid" || options.Preconditions.ResourceVersion != "123" {
+					t.Error("unsafe deletion preconditions")
+				}
+				w.WriteHeader(status)
+			}))
+			defer server.Close()
+			source := NewKubernetesNamespaceSource(server.URL, "", "", []string{"approved"}, server.Client())
+			if err := source.DeleteDatabaseCredential(context.Background(), "approved", "db", SecretRecord{}); !errors.Is(err, ErrDatabaseCredentialRecovery) {
+				t.Fatal("missing identity accepted")
+			}
+			err := source.DeleteDatabaseCredential(context.Background(), "approved", "db", SecretRecord{UID: "secret-uid", ResourceVersion: "123"})
+			if (err == nil) != (status == 200) {
+				t.Fatal("unsafe cleanup accepted")
+			}
+			if status == 409 && !errors.Is(err, ErrMaterializationConflict) {
+				t.Fatal("replacement conflict not classified")
+			}
+			if requests != 1 {
+				t.Fatal("unexpected request without identity")
 			}
 		})
 	}
