@@ -46,7 +46,7 @@ type finOpsMetric struct {
 // CollectFinOps uses Metrics API windows, not the poll interval. Missing metrics
 // or attribution is explicit; no namespace-name or base-service guessing.
 func (s *KubernetesNamespaceSource) CollectFinOps(ctx context.Context, project, cluster, agentID string, now time.Time) (domain.FinOpsMeteringBatch, error) {
-	b := domain.FinOpsMeteringBatch{ProjectID: project, ClusterID: cluster, AgentID: agentID, PeriodStart: now.Add(-time.Minute), PeriodEnd: now}
+	b := domain.FinOpsMeteringBatch{ProjectID: project, ClusterID: cluster, AgentID: agentID, PeriodStart: now.Add(-time.Minute), PeriodEnd: now, Samples: []domain.ResourceUsageSample{}}
 	namespaces, err := s.ListNamespaces(ctx)
 	if err != nil {
 		return b, err

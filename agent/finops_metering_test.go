@@ -50,6 +50,9 @@ func TestFinOpsMeasuredMissingAndUnattributed(t *testing.T) {
 			if b.MeasuredPods != test.wantMeasured || b.MetricsAvailable != test.wantAvailable || b.ExpectedPods != 1 {
 				t.Fatalf("batch=%+v", b)
 			}
+			if b.Samples == nil {
+				t.Fatal("metering samples must serialize as an array even when unavailable")
+			}
 			if len(b.Samples) > 0 {
 				if b.Samples[0].TenantID != "" || b.Samples[0].CPUCoreHours <= 0 || b.Samples[0].PeriodEnd.Sub(b.Samples[0].PeriodStart) != 30*time.Second {
 					t.Fatal("invented scope/window")
