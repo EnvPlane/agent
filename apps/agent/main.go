@@ -71,6 +71,9 @@ func runAgent(logger *slog.Logger) {
 		os.Exit(1)
 	}
 	reporter.SetToken(cfg.AgentAuthToken)
+	clusteragent.SafeGo(logger, "FinOps metering", func() {
+		clusteragent.RunFinOpsMetering(ctx, cfg, source, reporter, logger)
+	})
 	clusteragent.SafeGo(logger, "heartbeat", func() {
 		runHeartbeat(ctx, cfg, reporter, source, logger, bootstrapRegistrationToken)
 	})
