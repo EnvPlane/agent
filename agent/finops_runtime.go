@@ -2,6 +2,7 @@ package agent
 
 import (
 	"context"
+	"errors"
 	"log/slog"
 	"strings"
 	"time"
@@ -23,28 +24,23 @@ func RunFinOpsMeteringWithDimensions(ctx context.Context, cfg Config, source *Ku
 	// the usual Metrics API refresh; genuinely uncovered intervals stay gaps.
 	ticker := time.NewTicker(10 * time.Second)
 	defer ticker.Stop()
-	var pending *domain.FinOpsMeteringBatch
+	state := finOpsDeliveryState{}
 	for {
-		if pending == nil {
-			batch, err := source.CollectFinOps(ctx, cfg.BootstrapProjectID, cfg.ClusterID, cfg.AgentID, time.Now().UTC())
-			if err == nil {
-				owned, _ := source.FinOpsOwnedPodInventory(ctx, cfg.BootstrapProjectID)
-				_ = source.AttachFinOpsDimensions(ctx, &batch, dimensions, owned)
-				pending = &batch
-			} else if logger != nil {
-				logger.Warn("FinOps collection unavailable")
+		err := state.step(ctx, time.Now().UTC(), func() (domain.FinOpsMeteringBatch, error) {
+			return source.CollectFinOps(ctx, cfg.BootstrapProjectID, cfg.ClusterID, cfg.AgentID, time.Now().UTC())
+		}, func(batch *domain.FinOpsMeteringBatch) {
+			owned, _ := source.FinOpsOwnedPodInventory(ctx, cfg.BootstrapProjectID)
+			_ = source.AttachFinOpsDimensions(ctx, batch, dimensions, owned)
+		}, func(ctx context.Context, batch domain.FinOpsMeteringBatch) error {
+			return SubmitFinOps(ctx, reporter.client, cfg.ControlPlaneURL, reporter.Token(), batch)
+		})
+		if err != nil && logger != nil {
+			var failure *FinOpsDeliveryError
+			if errors.As(err, &failure) && failure != nil {
+				logger.Warn("FinOps delivery unavailable", "delivery_class", failure.Class(), "http_status", failure.StatusCode)
+			} else {
+				logger.Warn("FinOps collection or delivery configuration unavailable")
 			}
-		}
-		if pending != nil {
-			err := SubmitFinOps(ctx, reporter.client, cfg.ControlPlaneURL, reporter.Token(), *pending)
-			if err == nil {
-				pending = nil
-			} else if logger != nil {
-				logger.Warn("FinOps evidence delivery unavailable")
-			}
-			if pending != nil && time.Since(pending.PeriodEnd) > 5*time.Minute {
-				pending = nil
-			} // discard rejected/stale batch; leave a visible gap
 		}
 		select {
 		case <-ctx.Done():

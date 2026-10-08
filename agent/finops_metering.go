@@ -224,12 +224,12 @@ func SubmitFinOps(ctx context.Context, client *http.Client, base, token string, 
 	bounded.CheckRedirect = func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }
 	resp, err := bounded.Do(req)
 	if err != nil {
-		return errors.New("FinOps transport failed")
+		return &FinOpsDeliveryError{}
 	}
 	defer func() { _ = resp.Body.Close() }()
 	_, _ = io.Copy(io.Discard, io.LimitReader(resp.Body, 4096))
 	if resp.StatusCode != http.StatusNoContent {
-		return errors.New("FinOps evidence rejected")
+		return &FinOpsDeliveryError{StatusCode: resp.StatusCode}
 	}
 	return nil
 }
