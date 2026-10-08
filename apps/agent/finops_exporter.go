@@ -71,7 +71,9 @@ func runPVCUsageExporter(logger *slog.Logger) error {
 		return err
 	}
 	server := &http.Server{
-		Addr: ":9443", Handler: clusteragent.NewPinnedPVCUsageHandler(sampl),
+		Addr: ":9443", Handler: clusteragent.NewPinnedPVCUsageHandlerWithDiagnostic(sampl, func(reason string) {
+			logger.Warn("PVC usage measurement unavailable", "reason", reason)
+		}),
 		TLSConfig:         &tls.Config{MinVersion: tls.VersionTLS12, Certificates: []tls.Certificate{cert}},
 		ReadHeaderTimeout: 5 * time.Second, ReadTimeout: 10 * time.Second,
 		WriteTimeout: 15 * time.Second, IdleTimeout: 30 * time.Second, MaxHeaderBytes: 8192,

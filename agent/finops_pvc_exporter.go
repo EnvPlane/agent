@@ -38,6 +38,12 @@ func (s *KubernetesNamespaceSource) VerifyPinnedPVCUsageRef(ctx context.Context,
 // Non-TLS requests fail closed. Identity/permission failures never publish an
 // old reading or synthesize zero usage.
 func NewPinnedPVCUsageHandler(sampler *PinnedPVCUsageSampler) http.Handler {
+	return NewPinnedPVCUsageHandlerWithDiagnostic(sampler, nil)
+}
+
+// Only allowlisted failure categories may enter operator logs; no filenames,
+// dataset contents, raw API errors, credentials or caller input are included.
+func NewPinnedPVCUsageHandlerWithDiagnostic(sampler *PinnedPVCUsageSampler, diagnostic func(string)) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.TLS == nil || r.Method != http.MethodGet || r.URL.Path != "/metrics" || sampler == nil {
 			http.Error(w, "secure approved metrics request required", http.StatusForbidden)
@@ -45,10 +51,30 @@ func NewPinnedPVCUsageHandler(sampler *PinnedPVCUsageSampler) http.Handler {
 		}
 		readings, err := sampler.Sample(r.Context())
 		if err != nil {
+			if diagnostic != nil {
+				diagnostic(pvcUsageFailureCategory(err))
+			}
 			http.Error(w, "PVC measurement unavailable", http.StatusServiceUnavailable)
 			return
 		}
 		w.Header().Set("Content-Type", "text/plain; version=0.0.4")
 		_, _ = w.Write([]byte(PVCUsagePrometheusText(readings)))
 	})
+}
+
+func pvcUsageFailureCategory(err error) string {
+	switch err.Error() {
+	case "pinned PVC identity unavailable", "pinned PVC generation changed":
+		return "identity_unavailable"
+	case "PVC symlink prevents complete confined measurement":
+		return "symlink_unsupported"
+	case "PVC metadata scan unavailable", "PVC inode metadata unavailable":
+		return "metadata_access_unavailable"
+	case "reviewed read-only PVC mount unavailable", "PVC mount open unavailable":
+		return "mount_unavailable"
+	case "PVC metadata scan bound exceeded":
+		return "scan_bound_exceeded"
+	default:
+		return "measurement_unavailable"
+	}
 }
