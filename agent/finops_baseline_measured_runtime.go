@@ -31,9 +31,11 @@ func RunBaselineMeasuredMetering(ctx context.Context, cfg Config, source *Kubern
 		case <-ctx.Done():
 			return
 		case now := <-ticker.C:
+			ctx, cancel := context.WithTimeout(ctx, 45*time.Second)
 			now = now.UTC()
 			bindings, err := FetchBaselineBindings(ctx, reporter.client, cfg.ControlPlaneURL, reporter.Token(), cfg.BootstrapProjectID, cfg.ClusterID, cfg.AgentID, cfg.RemoteGeneration)
 			if err != nil || len(bindings) > 64 {
+				cancel()
 				last = now
 				if logger != nil {
 					logger.Warn("baseline measured registry unavailable or bound exceeded")
@@ -96,6 +98,7 @@ func RunBaselineMeasuredMetering(ctx context.Context, cfg Config, source *Kubern
 				}
 			}
 			last = now
+			cancel()
 		}
 	}
 }
