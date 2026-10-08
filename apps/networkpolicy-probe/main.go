@@ -17,6 +17,7 @@ import (
 	"time"
 
 	clusteragent "github.com/envplane/agent/agent"
+	"github.com/envplane/contracts/domain"
 )
 
 var errProbe = errors.New("probe operation unavailable")
@@ -177,8 +178,13 @@ func main() {
 	target := flag.String("context", "", "Explicit kube context")
 	authorized := flag.Bool("authorize-test-resources", false, "Authorize isolated temporary namespace, pods, policies and exec")
 	generation := flag.Int64("generation", 0, "Observed configuration generation (required)")
+	apiURL := flag.String("control-plane-url", "", "HTTPS control plane for authenticated submission")
+	tokenFile := flag.String("agent-token-file", "", "Private file containing the runtime Agent token")
+	projectID := flag.String("project-id", "", "Bound project identity")
+	clusterID := flag.String("cluster-id", "", "Bound remote cluster identity")
+	agentID := flag.String("agent-id", "", "Bound Agent identity")
 	flag.Parse()
-	if !*authorized || *target == "" || *generation <= 0 {
+	if !*authorized || *target == "" || (*generation <= 0 && *apiURL == "") {
 		_, _ = os.Stderr.WriteString("Explicit context, generation and test-resource authorization are required.\n")
 		os.Exit(2)
 	}
@@ -190,7 +196,39 @@ func main() {
 	driver := &kubectlDriver{target: *target, namespace: "envplane-netpol-probe-" + owner, owner: owner}
 	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Minute)
 	defer cancel()
+	var transport *clusteragent.NetworkPolicyProbeTransport
+	var challenge domain.NetworkPolicyProbeChallenge
+	var expectedUID string
+	if *apiURL != "" {
+		data, err := os.ReadFile(*tokenFile)
+		if err != nil {
+			os.Exit(2)
+		}
+		transport, err = clusteragent.NewNetworkPolicyProbeTransport(*apiURL, string(data), domain.NetworkPolicyProbeIdentity{ProjectID: *projectID, ClusterID: *clusterID, AgentID: *agentID}, nil)
+		if err != nil {
+			os.Exit(2)
+		}
+		uid, err := driver.ClusterUID(ctx)
+		if err != nil {
+			os.Exit(2)
+		}
+		challenge, err = transport.Challenge(ctx, uid)
+		if err != nil {
+			os.Exit(2)
+		}
+		*generation = challenge.Generation
+		expectedUID = uid
+	}
 	report := clusteragent.RunNetworkPolicyProbe(ctx, *generation, driver)
+	if transport != nil {
+		if report.ClusterUID == "" && report.State == "unknown" {
+			report.ClusterUID = expectedUID
+		}
+		if transport.Submit(ctx, challenge, report) != nil {
+			_, _ = os.Stderr.WriteString("Evidence transfer failed; no token or response body was printed.\n")
+			os.Exit(2)
+		}
+	}
 	if json.NewEncoder(os.Stdout).Encode(report) != nil {
 		os.Exit(2)
 	}

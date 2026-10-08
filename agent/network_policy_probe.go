@@ -3,23 +3,14 @@ package agent
 import (
 	"context"
 	"time"
+
+	"github.com/envplane/contracts/domain"
 )
 
 // NetworkPolicyProbeReport is operator evidence, not an API-discovery claim.
 // It proves only the stated scope; importing it into runtime readiness requires
 // authenticated cluster identity/generation binding at the control plane.
-type NetworkPolicyProbeReport struct {
-	SchemaVersion   int       `json:"schemaVersion"`
-	ClusterUID      string    `json:"clusterUID"`
-	Generation      int64     `json:"generation"`
-	CheckedAt       time.Time `json:"checkedAt"`
-	Scope           string    `json:"scope"`
-	Ingress         string    `json:"ingress"`
-	Egress          string    `json:"egress"`
-	State           string    `json:"state"`
-	Reason          string    `json:"reason"`
-	CleanupComplete bool      `json:"cleanupComplete"`
-}
+type NetworkPolicyProbeReport = domain.NetworkPolicyProbeReport
 
 // ProbeDriver owns temporary resources and distinguishes a confirmed network
 // timeout from exec/RBAC/image/controller failures. Raw output never reaches a report.
