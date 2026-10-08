@@ -1,5 +1,19 @@
 -- Aggregate evidence only. Never dump raw payload/credentials/application data.
 -- Invoke with psql -v ON_ERROR_STOP=1 -f - as an authorized operator.
+-- Supply current read-only Kubernetes inventory via -v backend_pod_uid=...
+-- -v frontend_pod_uid=... -v mysql_pod_uid=...; absence fails qualification.
+\if :{?backend_pod_uid}
+\else
+\set backend_pod_uid 'UNKNOWN'
+\endif
+\if :{?frontend_pod_uid}
+\else
+\set frontend_pod_uid 'UNKNOWN'
+\endif
+\if :{?mysql_pod_uid}
+\else
+\set mysql_pod_uid 'UNKNOWN'
+\endif
 BEGIN READ ONLY;
 SET LOCAL ROLE envplane_metering;
 SET LOCAL envplane.tenant_id = 'default';
@@ -62,6 +76,10 @@ WITH batches AS (
      AND (SELECT count(DISTINCT s->>'resourceUid') FROM jsonb_array_elements(d.value->'samples') s
        WHERE s->>'resourceUid' IN ('bcf325e3-299c-4e01-9b43-1e4123fb5bdc','4ca9499d-9a5b-4f59-8278-110b2744f404')
          AND (s->>'usedBytes')::numeric>0)=2))
+   AND (d.value->>'dimension'='storage.used' OR (
+     jsonb_array_length(d.value->'samples')=3
+     AND (SELECT count(DISTINCT s->>'resourceUid') FROM jsonb_array_elements(d.value->'samples') s
+       WHERE s->>'resourceUid' IN (:'backend_pod_uid',:'frontend_pod_uid',:'mysql_pod_uid'))=3))
 ), qualifying_windows AS (
  SELECT batch->>'clusterId' cluster_id,batch->>'periodStart' period_start,batch->>'periodEnd' period_end
  FROM qualified_reports GROUP BY 1,2,3
