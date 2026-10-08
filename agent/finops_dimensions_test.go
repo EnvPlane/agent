@@ -95,3 +95,19 @@ func TestPrometheusDimensionsAllowedSourceResetGapAndAbsentGPU(t *testing.T) {
 		})
 	}
 }
+
+func TestNoGPUIsDistinctFromMissingMetrics(t *testing.T) {
+	now := time.Now().UTC()
+	source := &FinOpsGPUInventorySource{Inventory: func(context.Context) (domain.FinOpsGPUInventory, error) {
+		return domain.FinOpsGPUInventory{ClusterID: "c", Source: "kubernetes-node-capacity", Nodes: 1, Devices: 0, ObservedAt: now}, nil
+	}}
+	r, err := source.Collect(context.Background(), domain.FinOpsGPUUtilization, nil, now.Add(-time.Minute), now)
+	if err != nil || r.State != "not_applicable" || r.Reason != "no_devices" || len(r.Samples) != 0 {
+		t.Fatalf("no devices=%+v err=%v", r, err)
+	}
+	source.Inventory = nil
+	r, err = source.Collect(context.Background(), domain.FinOpsGPUUtilization, nil, now.Add(-time.Minute), now)
+	if err != nil || r.State != "unavailable" {
+		t.Fatal("missing inventory conflated with no hardware")
+	}
+}
