@@ -18,6 +18,10 @@ agent.finops.prometheus.endpoint/allowedOrigins/caSecretRef/tlsServerName.
 Persist these values in the remote project installation profile and render
 Deployment env using the provider; no manual Pod env patch or default-image reset.
 
+Update: typed RemoteCluster.finops and Agent Helm settings are now implemented.
+Use agent.finops.prometheusEndpoint/allowedOrigins/caSecret/caKey/tlsServerName
+(flat Helm keys), not the earlier proposed nested prometheus keys.
+
 - ENVPLANE_FINOPS_NODE_INVENTORY_ENABLED: false default; explicit get/list nodes
   for the specific project Agent when enabled. No nodes/proxy or host grants.
 - ENVPLANE_FINOPS_CADVISOR_CONTAINERD_UID_ENABLED: false default; enable only on
@@ -88,3 +92,46 @@ reviewed standalone runtime before any live usage proof.
 
 Do not claim complete storage/network until those operator proofs exist. OpenAPI
 and frontend must include storage.used and usedBytes before generating images.
+
+## Actual candidate runtime proof: 2026-10-08 15:24 UTC
+
+The approved finops-private Helm release revision 1 is deployed only on
+bethunder-policy-candidate, namespace envplane-telemetry. Three standalone TLS
+exporters mount five current immutable PVCs read-only in app-backend,
+app2-backend and envplane-pr-e2e-ui-full-652-1007652. UID 999/65532; no fsGroup,
+hostPath or exec. Exact PVC GET is allowed; PVC list and Secret GET are denied.
+Dedicated scraper: exact node nodes/metrics GET allowed, nodes/proxy denied.
+
+Kubelet serving hostname bethunder-policy-candidate verifies against its pinned
+public certificate (Verify return code 0). No insecure TLS flag. Private
+Prometheus has TLS, NetworkPolicies, 2-hour/256MB bounded local TSDB; no public
+Service/Ingress. cAdvisor scrape is UP, including 512 non-root transmit series
+with real Pod UID cgroups and namespace/pod labels. This proves source
+availability, NOT authenticated tenant attribution or total cost coverage.
+
+All three PVC scrape targets return HTTP 503: five approved PVCs lack explicit
+envplane.io/component labels. Baseline namespaces lack environment/project
+bindings. Normal chart/ownership rollout must restore those bindings; never
+guess labels manually. Exporters do not emit zero or scan when verification
+fails. Measured storage and two persisted dimension ACK windows remain unproved.
+
+Local images, no push: envplane-local/agent:pvc-exporter-ec702cd and
+envplane-local/api:finops-profile-16b1200. Parent owns management API rollout,
+canonical RemoteCluster schema wiring and normal Save during cutover.
+
+Required finops profile:
+
+```yaml
+node_inventory_enabled: true
+cadvisor_containerd_uid_enabled: true
+prometheus_endpoint: https://finops-prometheus.envplane-telemetry.svc:9090
+allowed_origins: [https://finops-prometheus.envplane-telemetry.svc:9090]
+storage_used_metric: envplane_pvc_directory_allocated_bytes
+tls:
+  ca_secret_ref: {name: finops-exporter-ca, key: ca.crt}
+```
+
+Public CA Secret envplane-system/finops-exporter-ca exists on candidate only.
+For project Agents in other namespaces provision an authorized same-namespace
+public CA reference. Opt-in nodes get/list and metrics.k8s.io pod list must be
+included in the checked installer profile; no nodes/proxy or exec grants.
