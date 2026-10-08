@@ -35,3 +35,20 @@ copyRemoteAuthPersistence Agent branch replaces the whole Agent values map after
 desired FinOps values were built. Parent owns merging authPersistence into the
 existing map and normal reconciliation. Do not infer a collector transport or
 source error until the configured endpoint actually appears in runtime env.
+
+## Persistence-fix retry observation
+
+API finops-persistence-local-20261008 is Ready. Parent requested normal retry:
+desired generation 5, observed generation 4, phase degraded and Reconciled=False
+with reconcile_failed for gen5. Project Agent Helm finops values remained null
+and env contained node inventory only; no endpoint/CA source configuration yet.
+Do not classify this as an upgraded telemetry source failure or a successful ACK.
+Parent owns reconcile recovery; worker did not issue duplicate actions or change
+core/cache/schema/frontend, credentials, source replicas, policies or routing.
+
+Current feature network acceptance IDs read from Kubernetes:
+backend 65f0a182-b4b7-4562-930d-4a3aa9bf4aef;
+frontend 8d07da5e-e4af-43b4-b87b-089c4ff4779a;
+mysql ba200576-2293-43a9-89c8-2e0a8c3d6c4f.
+Pass these as SQL variables and refresh after Pod replacement; default UNKNOWN
+fails qualification. Exact two current PVC UIDs remain separately enforced.
