@@ -163,3 +163,26 @@ claiming API-only exporter isolation (NetworkPolicy grants union).
 Agent complete tests, focused race tests and lint passed; Bootstrap complete
 package tests and lint passed. Normal typed-profile Agent rollout and two tenant
 ledger ACK windows remain parent-controlled and are not claimed by source proof.
+
+## Five-PVC source closure after projected metadata normalization
+
+Parent derived baseline component metadata from actual source workload mounts,
+without creating namespace/project/environment ownership. Revalidation on the
+candidate confirms all five pinned UID gauges and all scrape targets UP:
+
+| Namespace | Claim | Current PVC UID | Allocated bytes |
+| --- | --- | --- | ---: |
+| app-backend | backend-data | 2f520e00-52f4-412f-be97-a4570ce45e97 | 4096 |
+| app-backend | mysql-data | 76dde56f-d7bf-4e08-aa89-da77157570f1 | 219516928 |
+| app2-backend | backend-data | 21ba9e4e-545f-4633-abd0-bfd47a9bc423 | 4096 |
+| envplane-pr-e2e-ui-full-652-1007652 | backend-data | bcf325e3-299c-4e01-9b43-1e4123fb5bdc | 4096 |
+| envplane-pr-e2e-ui-full-652-1007652 | mysql-data | 4ca9499d-9a5b-4f59-8278-110b2744f404 | 218632192 |
+
+Baseline three are source-measured but tenant-ledger unattributed without
+registered BaseResourceBinding; never merge their usage into the feature.
+Feature two can enter the normal existing Environment-bound ledger only after
+normal typed profile/Agent rollout. At this revalidation both deployed Agents
+still used the original GHCR image; project Agent only had node inventory enabled,
+not the new Prometheus source fields. Therefore two dimension ACK windows were
+not yet verified. Feature allow policy still had podSelector:{}; active Flux
+exclusion remains required before claiming exporter API-only egress.
