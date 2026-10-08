@@ -165,7 +165,7 @@ func materializationWireItemErrorCode(code string) domain.SecretMaterializationE
 		return domain.SecretErrorSourceNotFound
 	case "permission_denied":
 		return domain.SecretErrorPermissionDenied
-	case "unsafe_secret_type", "invalid_binding", "validation_failed":
+	case "unsafe_secret_type", "invalid_binding", "validation_failed", "database_credential_recovery_required":
 		return domain.SecretErrorValidationFailed
 	case "timeout":
 		return domain.SecretErrorTimeout
@@ -180,7 +180,7 @@ func materializationWireErrorCode(err error) domain.SecretMaterializationErrorCo
 		return domain.SecretErrorConflict
 	case errors.Is(err, ErrSecretNotFound):
 		return domain.SecretErrorSourceNotFound
-	case errors.Is(err, ErrMaterializationPlanMismatch), errors.Is(err, ErrUnsafeSecretType):
+	case errors.Is(err, ErrMaterializationPlanMismatch), errors.Is(err, ErrUnsafeSecretType), errors.Is(err, ErrDatabaseCredentialRecovery):
 		return domain.SecretErrorValidationFailed
 	default:
 		return domain.SecretErrorBackendUnavailable

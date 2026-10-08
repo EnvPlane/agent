@@ -19,6 +19,7 @@ var (
 	ErrUnsafeSecretType            = errors.New("unsafe Secret type is not materializable")
 	ErrMaterializationConflict     = errors.New("materialization conflict")
 	ErrSecretNotFound              = errors.New("secret not found")
+	ErrDatabaseCredentialRecovery  = errors.New("database credential recovery required")
 )
 
 type MaterializationCommand struct {
@@ -142,6 +143,11 @@ func (m *SecretMaterializer) Cleanup(ctx context.Context, command Materializatio
 		if existing.Labels["app.kubernetes.io/managed-by"] != "envplane" || existing.Annotations["envplane.io/secret-plan-digest"] != command.PlanDigest || item.TargetName != record.Name {
 			return ErrForeignSecret
 		}
+		if isDatabaseGenerator(item.Generator) {
+			if err := m.requireNoDatabasePVCs(ctx, record.Namespace); err != nil {
+				return err
+			}
+		}
 		if err := m.client.DeleteSecret(ctx, record.Namespace, record.Name); err != nil {
 			return err
 		}
@@ -177,15 +183,7 @@ func (m *SecretMaterializer) executeItem(ctx context.Context, command Materializ
 		defer clearMaterialBytes(value)
 		return m.applyCopiedSecret(ctx, command, item, SecretRecord{Type: "Opaque", Data: map[string][]byte{"value": value}}, key)
 	case domain.SecretStrategyGenerated:
-		if m.generator == nil {
-			return errors.New("secret generator is unavailable")
-		}
-		data, err := m.generator.Generate(ctx, item)
-		if err != nil {
-			return err
-		}
-		defer clearMaterialData(data)
-		return m.applyCopiedSecret(ctx, command, item, SecretRecord{Type: "Opaque", Data: data}, key)
+		return m.applyGeneratedSecret(ctx, command, item, key)
 	default:
 		return fmt.Errorf("unsupported secret strategy %q", item.Strategy)
 	}
@@ -241,6 +239,9 @@ func clearMaterialBytes(value []byte) {
 	}
 }
 func materializationErrorCode(err error) string {
+	if errors.Is(err, ErrDatabaseCredentialRecovery) {
+		return "database_credential_recovery_required"
+	}
 	if errors.Is(err, ErrForeignSecret) {
 		return "foreign_secret"
 	}
