@@ -24,13 +24,15 @@ func (s *KubernetesNamespaceSource) FinOpsOwnedPVCInventory(ctx context.Context,
 			continue
 		}
 		env := ns.Metadata.Labels[environmentIDLabel]
-		if env == "" {
-			return nil, errors.New("PVC namespace attribution missing")
-		}
 		err = s.listPages(ctx, s.apiURL+"/api/v1/namespaces/"+url.PathEscape(ns.Metadata.Name)+"/persistentvolumeclaims", "FinOps PVC ownership", func(raw json.RawMessage) error {
 			var pvc finOpsPVC
 			if e := json.Unmarshal(raw, &pvc); e != nil {
 				return e
+			}
+			// An empty project bootstrap namespace has no consumption or
+			// Environment identity. A real PVC without ownership still fails.
+			if env == "" {
+				return errors.New("PVC namespace attribution missing")
 			}
 			component, _ := FinOpsComponentID(pvc.Metadata.Labels)
 			if component == "" || pvc.Metadata.Name == "" || pvc.Metadata.UID == "" || pvc.Metadata.CreatedAt.IsZero() || pvc.Metadata.CreatedAt.After(start) || pvc.Status.Phase != "Bound" || pvc.Spec.VolumeName == "" || (pvc.Metadata.Labels[environmentIDLabel] != "" && pvc.Metadata.Labels[environmentIDLabel] != env) {

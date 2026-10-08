@@ -144,13 +144,16 @@ func (s *KubernetesNamespaceSource) FinOpsOwnedPodInventory(ctx context.Context,
 		if ns.Metadata.Labels["envplane.io/project-id"] != project {
 			continue
 		}
-		if env == "" {
-			return nil, errors.New("project namespace attribution missing")
-		}
 		err = s.listPages(ctx, s.apiURL+"/api/v1/namespaces/"+url.PathEscape(ns.Metadata.Name)+"/pods", "FinOps ownership", func(raw json.RawMessage) error {
 			var p finOpsPod
 			if e := json.Unmarshal(raw, &p); e != nil {
 				return e
+			}
+			if finOpsTelemetryPod(p.Metadata.Labels) {
+				return nil
+			}
+			if env == "" {
+				return errors.New("project namespace attribution missing")
 			}
 			component, _ := FinOpsComponentID(p.Metadata.Labels)
 			if component == "" || p.Metadata.UID == "" || (p.Metadata.Labels[environmentIDLabel] != "" && p.Metadata.Labels[environmentIDLabel] != env) {

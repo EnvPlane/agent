@@ -67,10 +67,6 @@ func (s *KubernetesNamespaceSource) CollectFinOps(ctx context.Context, project, 
 			continue
 		}
 		env := ns.Metadata.Labels[environmentIDLabel]
-		if env == "" {
-			b.UnattributedPods++
-			continue
-		}
 		var pods []finOpsPod
 		err = s.listPages(ctx, s.apiURL+"/api/v1/namespaces/"+url.PathEscape(ns.Metadata.Name)+"/pods", "FinOps pods", func(raw json.RawMessage) error {
 			var p finOpsPod
@@ -84,6 +80,10 @@ func (s *KubernetesNamespaceSource) CollectFinOps(ctx context.Context, project, 
 			return b, err
 		}
 		b.ExpectedPods += len(pods)
+		if env == "" {
+			b.UnattributedPods += len(pods)
+			continue
+		}
 		metrics := map[string]finOpsMetric{}
 		err = s.listPages(ctx, s.apiURL+"/apis/metrics.k8s.io/v1beta1/namespaces/"+url.PathEscape(ns.Metadata.Name)+"/pods", "FinOps metrics", func(raw json.RawMessage) error {
 			var m finOpsMetric
@@ -98,6 +98,12 @@ func (s *KubernetesNamespaceSource) CollectFinOps(ctx context.Context, project, 
 			continue
 		}
 		for _, p := range pods {
+			// A marker cannot hide consumption from coverage. The exporter
+			// remains expected and unallocated, never silently billed as zero.
+			if finOpsTelemetryPod(p.Metadata.Labels) {
+				b.UnattributedPods++
+				continue
+			}
 			component, _ := FinOpsComponentID(p.Metadata.Labels)
 			if component == "" || p.Metadata.UID == "" || (p.Metadata.Labels[environmentIDLabel] != "" && p.Metadata.Labels[environmentIDLabel] != env) {
 				b.UnattributedPods++
