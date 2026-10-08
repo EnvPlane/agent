@@ -61,7 +61,8 @@ Use no hostPath mounts, privileged mode, exec permission or Agent deployment.
 The separate exporter runtime must have GET on only its approved PVC names.
 
 The sampler reads allocated inode-block metadata, never file contents or node
-filesystem totals. Hardlinks are counted once; symlinks, denied metadata,
+filesystem totals. Hardlinks are counted once; symlink inode blocks are counted
+without following referenced targets. Denied metadata,
 changed identity, scan limits or unsupported OS fail unavailable. This is a
 directory allocated-block estimate and may differ from CSI quota/physical cloud
 storage. Deploy as non-root with existing metadata-read permissions; do not
@@ -136,3 +137,29 @@ Public CA Secret envplane-system/finops-exporter-ca exists on candidate only.
 For project Agents in other namespaces provision an authorized same-namespace
 public CA reference. Opt-in nodes get/list and metrics.k8s.io pod list must be
 included in the checked installer profile; no nodes/proxy or exec grants.
+
+## Component normalization and live feature gauges, 15:44 UTC
+
+Agent 907a07c resolves envplane.io/component and app.kubernetes.io/component
+consistently: either explicit value is accepted; contradictory labels are
+unavailable, with no claim-name guess. Agent fbeb80e counts allocated symlink
+inode blocks without following targets; external target growth is excluded.
+
+Private runtime revision 4, image envplane-local/agent:pvc-allocated-fbeb80e:
+feature scrape UP. Current backend-data UID bcf325e3-299c-4e01-9b43-1e4123fb5bdc
+reports 4096 bytes; mysql-data UID 4ca9499d-9a5b-4f59-8278-110b2744f404 reports
+218632192 bytes. These are actual confined directory allocation gauges, not
+requested capacity, referenced external data or invoice amounts.
+
+Three baseline PVC gauges still await normal component metadata rollout; their
+namespaces have no registered Environment bindings. Do not attribute them to the
+feature or invent Environment IDs. Future BaseResourceBinding is separate work.
+
+Bootstrap 6c8160a excludes PVC exporter-marker Pods from application allow
+policies and preserves namespace-wide deny-all. Actual feature Flux policy
+still had podSelector:{} when reviewed; parent must persist its exclusion before
+claiming API-only exporter isolation (NetworkPolicy grants union).
+
+Agent complete tests, focused race tests and lint passed; Bootstrap complete
+package tests and lint passed. Normal typed-profile Agent rollout and two tenant
+ledger ACK windows remain parent-controlled and are not claimed by source proof.
