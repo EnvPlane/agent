@@ -30,6 +30,11 @@ func NewConfiguredFinOpsDimensionSource(cfg Config, source *KubernetesNamespaceS
 		if err != nil {
 			return wrapper, errors.New("FinOps metrics HTTPS origin configuration invalid")
 		}
+		metrics.containerdUID = cfg.FinOpsCadvisorContainerdUIDEnabled
+		if cfg.FinOpsStorageUsedMetric != "" && cfg.FinOpsStorageUsedMetric != "kubelet_volume_stats_used_bytes" && cfg.FinOpsStorageUsedMetric != "envplane_pvc_directory_allocated_bytes" {
+			return wrapper, errors.New("unapproved storage-used metric")
+		}
+		metrics.storageUsedMetric = cfg.FinOpsStorageUsedMetric
 		wrapper.Metrics = metrics
 	}
 	return wrapper, nil

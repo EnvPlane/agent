@@ -20,7 +20,8 @@ import (
 
 type finOpsPod struct {
 	Spec struct {
-		Containers []struct {
+		HostNetwork bool `json:"hostNetwork"`
+		Containers  []struct {
 			Name      string `json:"name"`
 			Resources struct {
 				Requests map[string]string `json:"requests"`

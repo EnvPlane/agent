@@ -19,6 +19,10 @@ func dimensionReport(d domain.FinOpsDimension, start, end time.Time) domain.FinO
 		r.Unit = domain.FinOpsGiBHours
 		r.MeasurementKind = domain.FinOpsCapacity
 		r.Source = "kubernetes-pvc-api"
+	case FinOpsStorageUsed:
+		r.Unit = domain.FinOpsGiBHours
+		r.MeasurementKind = domain.FinOpsMeasured
+		r.Source = "prometheus-kubelet-volume-gauge"
 	case domain.FinOpsNetworkTransmit, domain.FinOpsNetworkReceive:
 		r.Unit = domain.FinOpsGiB
 		r.MeasurementKind = domain.FinOpsMeasured
@@ -120,6 +124,9 @@ func (s *KubernetesNamespaceSource) CollectFinOpsStorage(ctx context.Context, pr
 }
 
 type FinOpsOwnedResource struct {
+	ProvisionedBytes                                            int64
+	HostNetwork                                                 bool
+	PVCName                                                     string
 	Namespace, PodName, ResourceUID, EnvironmentID, ComponentID string
 	ExpectedGPUs                                                int
 }
@@ -165,7 +172,7 @@ func (s *KubernetesNamespaceSource) FinOpsOwnedPodInventory(ctx context.Context,
 					gpus += int(number)
 				}
 			}
-			result = append(result, FinOpsOwnedResource{Namespace: ns.Metadata.Name, PodName: p.Metadata.Name, ResourceUID: p.Metadata.UID, EnvironmentID: env, ComponentID: component, ExpectedGPUs: gpus})
+			result = append(result, FinOpsOwnedResource{Namespace: ns.Metadata.Name, PodName: p.Metadata.Name, ResourceUID: p.Metadata.UID, EnvironmentID: env, ComponentID: component, ExpectedGPUs: gpus, HostNetwork: p.Spec.HostNetwork})
 			return nil
 		})
 		if err != nil {
@@ -183,12 +190,19 @@ func (s *KubernetesNamespaceSource) AttachFinOpsDimensions(ctx context.Context, 
 		storage = []domain.FinOpsDimensionReport{dimensionReport(domain.FinOpsStorageRequested, b.PeriodStart, b.PeriodEnd), dimensionReport(domain.FinOpsStorageProvisioned, b.PeriodStart, b.PeriodEnd)}
 	}
 	b.Dimensions = storage
-	for _, d := range []domain.FinOpsDimension{domain.FinOpsNetworkTransmit, domain.FinOpsNetworkReceive, domain.FinOpsGPUUtilization} {
+	for _, d := range []domain.FinOpsDimension{domain.FinOpsNetworkTransmit, domain.FinOpsNetworkReceive, domain.FinOpsGPUUtilization, FinOpsStorageUsed} {
 		r := dimensionReport(d, b.PeriodStart, b.PeriodEnd)
 		if external != nil {
-			observed, e := external.Collect(ctx, d, owned, b.PeriodStart, b.PeriodEnd)
+			inventory := owned
+			if d == FinOpsStorageUsed {
+				inventory, _ = s.FinOpsOwnedPVCInventory(ctx, b.ProjectID, b.PeriodStart)
+			}
+			observed, e := external.Collect(ctx, d, inventory, b.PeriodStart, b.PeriodEnd)
 			if e == nil {
 				r = observed
+			} else {
+				r.Reason = "source-unavailable-or-unattributed"
+				r.ExpectedResources = observed.ExpectedResources
 			}
 		}
 		b.Dimensions = append(b.Dimensions, r)

@@ -17,8 +17,10 @@ import (
 )
 
 type FinOpsPrometheusSource struct {
-	endpoint string
-	client   *http.Client
+	containerdUID     bool
+	storageUsedMetric string
+	endpoint          string
+	client            *http.Client
 }
 
 // NewFinOpsPrometheusSource accepts an explicitly approved exact HTTPS origin,
@@ -65,6 +67,8 @@ func prometheusMetric(d domain.FinOpsDimension) string {
 		return "container_network_receive_bytes_total"
 	case domain.FinOpsGPUUtilization:
 		return "DCGM_FI_DEV_GPU_UTIL"
+	case FinOpsStorageUsed:
+		return "kubelet_volume_stats_used_bytes"
 	default:
 		return ""
 	}
@@ -75,12 +79,19 @@ func (s *FinOpsPrometheusSource) Collect(ctx context.Context, d domain.FinOpsDim
 	defer cancel()
 	r := dimensionReport(d, start, end)
 	metric := prometheusMetric(d)
+	if d == FinOpsStorageUsed && s != nil && s.storageUsedMetric == "envplane_pvc_directory_allocated_bytes" {
+		metric = s.storageUsedMetric
+		r.Source = "prometheus-owned-pvc-directory-gauge"
+	}
 	if s == nil || metric == "" || !end.After(start) || end.Sub(start) > 5*time.Minute {
 		return r, errors.New("invalid dimension window")
 	}
 	byUID := map[string]FinOpsOwnedResource{}
 	for _, o := range owned {
-		if o.Namespace == "" || o.ResourceUID == "" || o.EnvironmentID == "" || o.ComponentID == "" || o.PodName == "" || (d == domain.FinOpsGPUUtilization && o.ExpectedGPUs <= 0) {
+		if (d == domain.FinOpsNetworkTransmit || d == domain.FinOpsNetworkReceive) && o.HostNetwork {
+			return r, errors.New("shared host-network traffic is unattributable")
+		}
+		if o.Namespace == "" || o.ResourceUID == "" || o.EnvironmentID == "" || o.ComponentID == "" || (d != FinOpsStorageUsed && o.PodName == "") || (d == FinOpsStorageUsed && o.PVCName == "") || (d == domain.FinOpsGPUUtilization && o.ExpectedGPUs <= 0) {
 			continue
 		}
 		if _, exists := byUID[o.ResourceUID]; exists {
@@ -101,10 +112,16 @@ func (s *FinOpsPrometheusSource) Collect(ctx context.Context, d domain.FinOpsDim
 	var all []finOpsPromSeries
 	for _, o := range byUID {
 		selector := metric + "{namespace=" + strconv.Quote(o.Namespace) + ",pod=" + strconv.Quote(o.PodName) + ",pod_uid=" + strconv.Quote(o.ResourceUID) + "}"
-		if d != domain.FinOpsGPUUtilization {
+		if d == FinOpsStorageUsed {
+			selector = metric + "{namespace=" + strconv.Quote(o.Namespace) + ",persistentvolumeclaim=" + strconv.Quote(o.PVCName) + ",pvc_uid=" + strconv.Quote(o.ResourceUID) + "}"
+		}
+		if d == domain.FinOpsNetworkTransmit || d == domain.FinOpsNetworkReceive {
+			selector = s.networkSelector(metric, o)
+		}
+		if d == domain.FinOpsNetworkTransmit || d == domain.FinOpsNetworkReceive {
 			// Endpoint delta alone misses resets which recover above the old
 			// value. Require a reset-free observed Prometheus counter window.
-			q := url.Values{"query": {"resets(" + selector + "[" + strconv.Itoa(int(math.Ceil(end.Sub(start).Seconds()))) + "s])"}, "time": {strconv.FormatFloat(float64(end.UnixNano())/1e9, 'f', 9, 64)}}
+			q := url.Values{"query": {s.networkResetQuery(metric, o, int(math.Ceil(end.Sub(start).Seconds())))}, "time": {strconv.FormatFloat(float64(end.UnixNano())/1e9, 'f', 9, 64)}}
 			req, e := http.NewRequestWithContext(ctx, http.MethodGet, s.endpoint+"/api/v1/query?"+q.Encode(), nil)
 			if e != nil {
 				return r, e
@@ -130,6 +147,11 @@ func (s *FinOpsPrometheusSource) Collect(ctx context.Context, d domain.FinOpsDim
 				return r, errors.New("reset coverage unavailable")
 			}
 			for _, sample := range reset.Data.Result {
+				identity, e := s.normalizeNetworkIdentity(sample.Metric, byUID)
+				if e != nil {
+					return r, e
+				}
+				sample.Metric = identity
 				if sample.Metric["pod_uid"] != o.ResourceUID || sample.Metric["namespace"] != o.Namespace || sample.Metric["pod"] != o.PodName || len(sample.Value) != 2 {
 					return r, errors.New("reset attribution unavailable")
 				}
@@ -162,16 +184,30 @@ func (s *FinOpsPrometheusSource) Collect(ctx context.Context, d domain.FinOpsDim
 		all = append(all, decoded.Data.Result...)
 	}
 	totals := map[string]float64{}
+	usedBytes := map[string]int64{}
 	counts := map[string]int{}
 	bad := map[string]bool{}
 	seriesIDs := map[string]bool{}
 	for _, series := range all {
+		if d == domain.FinOpsNetworkTransmit || d == domain.FinOpsNetworkReceive {
+			identity, e := s.normalizeNetworkIdentity(series.Metric, byUID)
+			if e != nil {
+				return r, e
+			}
+			series.Metric = identity
+		}
 		uid := series.Metric["pod_uid"]
+		if d == FinOpsStorageUsed {
+			uid = series.Metric["pvc_uid"]
+		}
 		owner, ok := byUID[uid]
-		if !ok || series.Metric["__name__"] != metric || series.Metric["namespace"] != owner.Namespace || series.Metric["pod"] != owner.PodName {
+		if !ok || series.Metric["__name__"] != metric || series.Metric["namespace"] != owner.Namespace || (d != FinOpsStorageUsed && series.Metric["pod"] != owner.PodName) || (d == FinOpsStorageUsed && series.Metric["persistentvolumeclaim"] != owner.PVCName) {
 			return r, errors.New("untrusted metrics attribution")
 		}
 		device := series.Metric["interface"]
+		if d == FinOpsStorageUsed {
+			device = uid
+		}
 		if d == domain.FinOpsGPUUtilization {
 			device = series.Metric["UUID"]
 		} else if device == "lo" {
@@ -188,7 +224,14 @@ func (s *FinOpsPrometheusSource) Collect(ctx context.Context, d domain.FinOpsDim
 			continue
 		}
 		quantity := (last - first) / (1 << 30)
-		if d == domain.FinOpsGPUUtilization {
+		if d == FinOpsStorageUsed {
+			if owner.ProvisionedBytes <= 0 || first > float64(owner.ProvisionedBytes) || last > float64(owner.ProvisionedBytes) || last >= float64(math.MaxInt64) || math.Trunc(last) != last || math.Trunc(first) != first {
+				bad[uid] = true
+				continue
+			}
+			usedBytes[uid] = int64(last)
+			quantity = (first + last) / 2 / (1 << 30) * end.Sub(start).Hours()
+		} else if d == domain.FinOpsGPUUtilization {
 			if first > 100 || last > 100 {
 				bad[uid] = true
 				continue
@@ -207,6 +250,10 @@ func (s *FinOpsPrometheusSource) Collect(ctx context.Context, d domain.FinOpsDim
 		}
 		id := sha256.Sum256([]byte(string(d) + "|" + uid + "|" + start.Format(time.RFC3339Nano) + "|" + end.Format(time.RFC3339Nano)))
 		r.Samples = append(r.Samples, domain.FinOpsDimensionSample{SampleID: hex.EncodeToString(id[:]), EnvironmentID: owner.EnvironmentID, ComponentID: owner.ComponentID, Namespace: owner.Namespace, ResourceUID: uid, Quantity: totals[uid]})
+		if d == FinOpsStorageUsed {
+			bytes := usedBytes[uid]
+			r.Samples[len(r.Samples)-1].UsedBytes = &bytes
+		}
 		r.ObservedResources++
 	}
 	r.Reason = "missing-series-reset-or-device-coverage"

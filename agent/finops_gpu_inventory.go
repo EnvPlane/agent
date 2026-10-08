@@ -33,5 +33,8 @@ func (s *FinOpsGPUInventorySource) Collect(ctx context.Context, d domain.FinOpsD
 	if s.Metrics != nil {
 		return s.Metrics.Collect(ctx, d, owned, start, end)
 	}
+	if d != domain.FinOpsGPUUtilization {
+		r.ExpectedResources = len(owned)
+	}
 	return r, nil
 }
