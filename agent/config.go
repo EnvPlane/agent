@@ -21,6 +21,11 @@ const (
 )
 
 type Config struct {
+	FinOpsNodeInventoryEnabled     bool
+	FinOpsPrometheusEndpoint       string
+	FinOpsPrometheusAllowedOrigins []string
+	FinOpsPrometheusCAFile         string
+	FinOpsPrometheusTLSServerName  string
 	// EnvDiagnostics contains variable names only; values are never retained.
 	EnvDiagnostics              []string
 	ControlPlaneURL             string
@@ -111,23 +116,28 @@ func ConfigFromEnv() Config {
 		excludedNamespaces = append(excludedNamespaces, strings.TrimSpace(agentNamespace))
 	}
 	cfg := Config{
-		ControlPlaneURL:           getenv("ENVPLANE_CONTROL_PLANE_URL", ""),
-		ControlPlaneEndpointMode:  strings.TrimSpace(getenv("ENVPLANE_CONTROL_PLANE_ENDPOINT_MODE", "sameCluster")),
-		ControlPlaneCAFile:        getenv("ENVPLANE_CONTROL_PLANE_CA_FILE", ""),
-		ControlPlaneTLSServerName: getenv("ENVPLANE_CONTROL_PLANE_TLS_SERVER_NAME", ""),
-		AllowInsecureControlPlane: getenvBool("ENVPLANE_ALLOW_INSECURE_CONTROL_PLANE", false),
-		RegistrationToken:         getenv("ENVPLANE_AGENT_REGISTRATION_TOKEN", ""),
-		AgentAuthToken:            agentAuthToken,
-		AgentAuthTokenFile:        agentAuthTokenFile,
-		TerminalEventQueueDir:     getenv("ENVPLANE_TERMINAL_EVENT_QUEUE_DIR", "/var/lib/envplane-agent/auth/events"),
-		BootstrapProjectID:        getenv("ENVPLANE_BOOTSTRAP_PROJECT_ID", ""),
-		ClusterID:                 getenv("ENVPLANE_CLUSTER_ID", "default"),
-		AgentID:                   getenv("ENVPLANE_AGENT_ID", hostname()),
-		AgentNamespace:            agentNamespace,
-		AgentVersion:              getenv("ENVPLANE_AGENT_VERSION", "dev"),
-		KubernetesAPIURL:          getenv("ENVPLANE_KUBERNETES_API_URL", inClusterAPIURL()),
-		KubernetesToken:           getenv("ENVPLANE_KUBERNETES_TOKEN_PATH", defaultServiceAccountToken),
-		KubernetesCA:              getenv("ENVPLANE_KUBERNETES_CA_PATH", defaultServiceAccountCA),
+		FinOpsNodeInventoryEnabled:     getenvBool("ENVPLANE_FINOPS_NODE_INVENTORY_ENABLED", false),
+		FinOpsPrometheusEndpoint:       getenv("ENVPLANE_FINOPS_PROMETHEUS_ENDPOINT", ""),
+		FinOpsPrometheusAllowedOrigins: splitCSV(getenv("ENVPLANE_FINOPS_PROMETHEUS_ALLOWED_ORIGINS", "")),
+		FinOpsPrometheusCAFile:         getenv("ENVPLANE_FINOPS_PROMETHEUS_CA_FILE", ""),
+		FinOpsPrometheusTLSServerName:  getenv("ENVPLANE_FINOPS_PROMETHEUS_TLS_SERVER_NAME", ""),
+		ControlPlaneURL:                getenv("ENVPLANE_CONTROL_PLANE_URL", ""),
+		ControlPlaneEndpointMode:       strings.TrimSpace(getenv("ENVPLANE_CONTROL_PLANE_ENDPOINT_MODE", "sameCluster")),
+		ControlPlaneCAFile:             getenv("ENVPLANE_CONTROL_PLANE_CA_FILE", ""),
+		ControlPlaneTLSServerName:      getenv("ENVPLANE_CONTROL_PLANE_TLS_SERVER_NAME", ""),
+		AllowInsecureControlPlane:      getenvBool("ENVPLANE_ALLOW_INSECURE_CONTROL_PLANE", false),
+		RegistrationToken:              getenv("ENVPLANE_AGENT_REGISTRATION_TOKEN", ""),
+		AgentAuthToken:                 agentAuthToken,
+		AgentAuthTokenFile:             agentAuthTokenFile,
+		TerminalEventQueueDir:          getenv("ENVPLANE_TERMINAL_EVENT_QUEUE_DIR", "/var/lib/envplane-agent/auth/events"),
+		BootstrapProjectID:             getenv("ENVPLANE_BOOTSTRAP_PROJECT_ID", ""),
+		ClusterID:                      getenv("ENVPLANE_CLUSTER_ID", "default"),
+		AgentID:                        getenv("ENVPLANE_AGENT_ID", hostname()),
+		AgentNamespace:                 agentNamespace,
+		AgentVersion:                   getenv("ENVPLANE_AGENT_VERSION", "dev"),
+		KubernetesAPIURL:               getenv("ENVPLANE_KUBERNETES_API_URL", inClusterAPIURL()),
+		KubernetesToken:                getenv("ENVPLANE_KUBERNETES_TOKEN_PATH", defaultServiceAccountToken),
+		KubernetesCA:                   getenv("ENVPLANE_KUBERNETES_CA_PATH", defaultServiceAccountCA),
 		// An empty selector intentionally means all namespaces.
 		NamespaceSelector:       strings.TrimSpace(getenv("ENVPLANE_WATCH_NAMESPACE_SELECTOR", "")),
 		Namespaces:              splitCSV(getenv("ENVPLANE_WATCH_NAMESPACES", "")),

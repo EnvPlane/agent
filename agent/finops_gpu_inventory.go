@@ -19,6 +19,9 @@ func (s *FinOpsGPUInventorySource) Collect(ctx context.Context, d domain.FinOpsD
 	r := dimensionReport(d, start, end)
 	if d == domain.FinOpsGPUUtilization && s.Inventory != nil {
 		inventory, err := s.Inventory(ctx)
+		if err != nil {
+			r.Reason = "node-inventory-unavailable"
+		}
 		if err == nil && inventory.ClusterID != "" && inventory.Source == "kubernetes-node-capacity" && inventory.Nodes > 0 && inventory.Devices == 0 && !inventory.ObservedAt.IsZero() && !inventory.ObservedAt.Before(end.Add(-5*time.Minute)) && !inventory.ObservedAt.After(end.Add(time.Minute)) {
 			r.State = "not_applicable"
 			r.Reason = "no_devices"

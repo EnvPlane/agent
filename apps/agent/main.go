@@ -71,8 +71,12 @@ func runAgent(logger *slog.Logger) {
 		os.Exit(1)
 	}
 	reporter.SetToken(cfg.AgentAuthToken)
+	finopsDimensions, finopsErr := clusteragent.NewConfiguredFinOpsDimensionSource(cfg, source)
+	if finopsErr != nil {
+		logger.Warn("optional FinOps metrics configuration unavailable")
+	}
 	clusteragent.SafeGo(logger, "FinOps metering", func() {
-		clusteragent.RunFinOpsMetering(ctx, cfg, source, reporter, logger)
+		clusteragent.RunFinOpsMeteringWithDimensions(ctx, cfg, source, reporter, finopsDimensions, logger)
 	})
 	clusteragent.SafeGo(logger, "heartbeat", func() {
 		runHeartbeat(ctx, cfg, reporter, source, logger, bootstrapRegistrationToken)
