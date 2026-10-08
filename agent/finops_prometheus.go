@@ -75,6 +75,10 @@ func prometheusMetric(d domain.FinOpsDimension) string {
 }
 
 func (s *FinOpsPrometheusSource) Collect(ctx context.Context, d domain.FinOpsDimension, owned []FinOpsOwnedResource, start, end time.Time) (domain.FinOpsDimensionReport, error) {
+	return s.collect(ctx, d, owned, start, end, false)
+}
+
+func (s *FinOpsPrometheusSource) collect(ctx context.Context, d domain.FinOpsDimension, owned []FinOpsOwnedResource, start, end time.Time, baseline bool) (domain.FinOpsDimensionReport, error) {
 	ctx, cancel := context.WithTimeout(ctx, 20*time.Second)
 	defer cancel()
 	r := dimensionReport(d, start, end)
@@ -91,7 +95,11 @@ func (s *FinOpsPrometheusSource) Collect(ctx context.Context, d domain.FinOpsDim
 		if (d == domain.FinOpsNetworkTransmit || d == domain.FinOpsNetworkReceive) && o.HostNetwork {
 			return r, errors.New("shared host-network traffic is unattributable")
 		}
-		if o.Namespace == "" || o.ResourceUID == "" || o.EnvironmentID == "" || o.ComponentID == "" || (d != FinOpsStorageUsed && o.PodName == "") || (d == FinOpsStorageUsed && o.PVCName == "") || (d == domain.FinOpsGPUUtilization && o.ExpectedGPUs <= 0) {
+		attributed := o.EnvironmentID != "" && o.baselineBindingID == "" && o.baselineVersion == 0
+		if baseline {
+			attributed = o.EnvironmentID == "" && o.baselineBindingID != "" && o.baselineVersion > 0
+		}
+		if o.Namespace == "" || o.ResourceUID == "" || !attributed || o.ComponentID == "" || (d != FinOpsStorageUsed && o.PodName == "") || (d == FinOpsStorageUsed && o.PVCName == "") || (d == domain.FinOpsGPUUtilization && o.ExpectedGPUs <= 0) {
 			continue
 		}
 		if _, exists := byUID[o.ResourceUID]; exists {

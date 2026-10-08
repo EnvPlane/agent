@@ -62,8 +62,9 @@ func RunBaselineMetering(ctx context.Context, cfg Config, source *KubernetesName
 }
 
 type baselineDeliveryState struct {
-	start   time.Time
-	pending *domain.BaselineMeteringBatch
+	start    time.Time
+	pending  *domain.BaselineMeteringBatch
+	finished map[string]time.Time
 }
 
 func (s *baselineDeliveryState) step(ctx context.Context, now time.Time, collect func(time.Time, time.Time) (domain.BaselineMeteringBatch, error), submit func(context.Context, domain.BaselineMeteringBatch) error) error {
@@ -80,6 +81,17 @@ func (s *baselineDeliveryState) step(ctx context.Context, now time.Time, collect
 		if len(batch.Samples) == 0 {
 			return nil
 		}
+		if s.finished == nil {
+			s.finished = map[string]time.Time{}
+		}
+		for id, at := range s.finished {
+			if now.Sub(at) > 10*time.Minute {
+				delete(s.finished, id)
+			}
+		}
+		if _, done := s.finished[batch.BatchID]; done {
+			return nil
+		}
 		s.pending = &batch
 	}
 	if now.Sub(s.pending.PeriodEnd) > 5*time.Minute {
@@ -89,6 +101,10 @@ func (s *baselineDeliveryState) step(ctx context.Context, now time.Time, collect
 	}
 	err := submit(ctx, *s.pending)
 	if err == nil || !FinOpsDeliveryRetryable(err) {
+		if len(s.finished) >= 64 {
+			s.finished = map[string]time.Time{}
+		}
+		s.finished[s.pending.BatchID] = now
 		s.pending = nil
 		s.start = now
 	}

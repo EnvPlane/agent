@@ -121,6 +121,8 @@ func (s *KubernetesNamespaceSource) CollectFinOpsStorage(ctx context.Context, pr
 }
 
 type FinOpsOwnedResource struct {
+	baselineBindingID                                           string
+	baselineVersion                                             int64
 	ProvisionedBytes                                            int64
 	HostNetwork                                                 bool
 	PVCName                                                     string

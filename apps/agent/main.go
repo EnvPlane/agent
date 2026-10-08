@@ -88,6 +88,9 @@ func runAgent(logger *slog.Logger) {
 			clusteragent.RunBaselineMetering(ctx, cfg, source, reporter, logger)
 		})
 	}
+	if cfg.FinOpsBaselineMeasuredEnabled {
+		clusteragent.SafeGo(logger, "baseline measured metering", func() { clusteragent.RunBaselineMeasuredMetering(ctx, cfg, source, reporter, finopsDimensions, logger) })
+	}
 	clusteragent.SafeGo(logger, "heartbeat", func() {
 		runHeartbeat(ctx, cfg, reporter, source, logger, bootstrapRegistrationToken)
 	})
