@@ -180,6 +180,8 @@ func main() {
 	generation := flag.Int64("generation", 0, "Observed configuration generation (required)")
 	apiURL := flag.String("control-plane-url", "", "HTTPS control plane for authenticated submission")
 	tokenFile := flag.String("agent-token-file", "", "Private file containing the runtime Agent token")
+	caFile := flag.String("control-plane-ca-file", "", "Reviewed management HTTPS CA bundle")
+	tlsServerName := flag.String("control-plane-tls-server-name", "", "Reviewed management HTTPS certificate name")
 	projectID := flag.String("project-id", "", "Bound project identity")
 	clusterID := flag.String("cluster-id", "", "Bound remote cluster identity")
 	agentID := flag.String("agent-id", "", "Bound Agent identity")
@@ -200,11 +202,21 @@ func main() {
 	var challenge domain.NetworkPolicyProbeChallenge
 	var expectedUID string
 	if *apiURL != "" {
+		info, err := os.Lstat(*tokenFile)
+		if err != nil || !info.Mode().IsRegular() || info.Mode().Perm()&0077 != 0 {
+			_, _ = os.Stderr.WriteString("Private regular runtime token file required.\n")
+			os.Exit(2)
+		}
 		data, err := os.ReadFile(*tokenFile)
 		if err != nil {
 			os.Exit(2)
 		}
-		transport, err = clusteragent.NewNetworkPolicyProbeTransport(*apiURL, string(data), domain.NetworkPolicyProbeIdentity{ProjectID: *projectID, ClusterID: *clusterID, AgentID: *agentID}, nil)
+		client, err := clusteragent.NewControlPlaneHTTPClientWithTLS(20*time.Second, *caFile, *tlsServerName)
+		if err != nil {
+			_, _ = os.Stderr.WriteString("Reviewed management TLS configuration unavailable.\n")
+			os.Exit(2)
+		}
+		transport, err = clusteragent.NewNetworkPolicyProbeTransport(*apiURL, string(data), domain.NetworkPolicyProbeIdentity{ProjectID: *projectID, ClusterID: *clusterID, AgentID: *agentID}, client)
 		if err != nil {
 			os.Exit(2)
 		}
