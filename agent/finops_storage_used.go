@@ -32,7 +32,7 @@ func (s *KubernetesNamespaceSource) FinOpsOwnedPVCInventory(ctx context.Context,
 			if e := json.Unmarshal(raw, &pvc); e != nil {
 				return e
 			}
-			component := pvc.Metadata.Labels["envplane.io/component"]
+			component, _ := FinOpsComponentID(pvc.Metadata.Labels)
 			if component == "" || pvc.Metadata.Name == "" || pvc.Metadata.UID == "" || pvc.Metadata.CreatedAt.IsZero() || pvc.Metadata.CreatedAt.After(start) || pvc.Status.Phase != "Bound" || pvc.Spec.VolumeName == "" || (pvc.Metadata.Labels[environmentIDLabel] != "" && pvc.Metadata.Labels[environmentIDLabel] != env) {
 				return errors.New("PVC identity/generation unavailable")
 			}

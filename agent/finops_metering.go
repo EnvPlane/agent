@@ -98,10 +98,7 @@ func (s *KubernetesNamespaceSource) CollectFinOps(ctx context.Context, project, 
 			continue
 		}
 		for _, p := range pods {
-			component := p.Metadata.Labels["envplane.io/component"]
-			if component == "" {
-				component = p.Metadata.Labels["app.kubernetes.io/component"]
-			}
+			component, _ := FinOpsComponentID(p.Metadata.Labels)
 			if component == "" || p.Metadata.UID == "" || (p.Metadata.Labels[environmentIDLabel] != "" && p.Metadata.Labels[environmentIDLabel] != env) {
 				b.UnattributedPods++
 				continue
@@ -170,10 +167,7 @@ func (s *KubernetesNamespaceSource) CollectFinOps(ctx context.Context, project, 
 		if !valid {
 			continue
 		}
-		component := p.pod.Metadata.Labels["envplane.io/component"]
-		if component == "" {
-			component = p.pod.Metadata.Labels["app.kubernetes.io/component"]
-		}
+		component, _ := FinOpsComponentID(p.pod.Metadata.Labels)
 		id := sha256.Sum256([]byte(cluster + "|" + p.pod.Metadata.UID + "|" + b.PeriodStart.Format(time.RFC3339Nano) + "|" + b.PeriodEnd.Format(time.RFC3339Nano)))
 		b.Samples = append(b.Samples, domain.ResourceUsageSample{SnapshotID: hex.EncodeToString(id[:]), ProjectID: project, ClusterID: cluster, EnvironmentID: p.env, ComponentID: component, MeasurementKind: domain.FinOpsMeasured, Source: "kubernetes-metrics-api", CPUCoreHours: cpu * b.PeriodEnd.Sub(b.PeriodStart).Hours(), MemoryGiBHours: memory / (1 << 30) * b.PeriodEnd.Sub(b.PeriodStart).Hours(), OccurredAt: b.PeriodEnd, PeriodStart: b.PeriodStart, PeriodEnd: b.PeriodEnd})
 		b.MeasuredPods++

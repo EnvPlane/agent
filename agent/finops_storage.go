@@ -86,10 +86,7 @@ func (s *KubernetesNamespaceSource) CollectFinOpsStorage(ctx context.Context, pr
 				reports[i].ExpectedResources++
 			}
 			env := ns.Metadata.Labels[environmentIDLabel]
-			component := pvc.Metadata.Labels["envplane.io/component"]
-			if component == "" {
-				component = pvc.Metadata.Labels["app.kubernetes.io/component"]
-			}
+			component, _ := FinOpsComponentID(pvc.Metadata.Labels)
 			if env == "" || component == "" || pvc.Metadata.UID == "" || pvc.Metadata.CreatedAt.IsZero() || pvc.Metadata.CreatedAt.After(start) || (pvc.Metadata.Labels[environmentIDLabel] != "" && pvc.Metadata.Labels[environmentIDLabel] != env) {
 				continue
 			}
@@ -155,10 +152,7 @@ func (s *KubernetesNamespaceSource) FinOpsOwnedPodInventory(ctx context.Context,
 			if e := json.Unmarshal(raw, &p); e != nil {
 				return e
 			}
-			component := p.Metadata.Labels["envplane.io/component"]
-			if component == "" {
-				component = p.Metadata.Labels["app.kubernetes.io/component"]
-			}
+			component, _ := FinOpsComponentID(p.Metadata.Labels)
 			if component == "" || p.Metadata.UID == "" || (p.Metadata.Labels[environmentIDLabel] != "" && p.Metadata.Labels[environmentIDLabel] != env) {
 				return errors.New("Pod attribution missing")
 			}

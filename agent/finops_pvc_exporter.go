@@ -24,7 +24,11 @@ func (s *KubernetesNamespaceSource) VerifyPinnedPVCUsageRef(ctx context.Context,
 	}
 	defer func() { _ = response.Body.Close() }()
 	var pvc finOpsPVC
-	if response.StatusCode != http.StatusOK || json.NewDecoder(http.MaxBytesReader(nil, response.Body, 1<<20)).Decode(&pvc) != nil || pvc.Metadata.UID != ref.PVCUID || pvc.Metadata.Name != ref.PVCName || pvc.Metadata.Labels["envplane.io/component"] != ref.ComponentID || pvc.Status.Phase != "Bound" || pvc.Spec.VolumeName == "" {
+	if response.StatusCode != http.StatusOK || json.NewDecoder(http.MaxBytesReader(nil, response.Body, 1<<20)).Decode(&pvc) != nil {
+		return errors.New("pinned PVC lookup unavailable")
+	}
+	component, err := FinOpsComponentID(pvc.Metadata.Labels)
+	if err != nil || pvc.Metadata.UID != ref.PVCUID || pvc.Metadata.Name != ref.PVCName || component != ref.ComponentID || pvc.Status.Phase != "Bound" || pvc.Spec.VolumeName == "" {
 		return errors.New("pinned PVC generation/component mismatch")
 	}
 	return nil
