@@ -21,6 +21,7 @@ const (
 )
 
 type Config struct {
+	FinOpsBaselineCapacityEnabled      bool
 	FinOpsNodeInventoryEnabled         bool
 	FinOpsCadvisorContainerdUIDEnabled bool
 	FinOpsStorageUsedMetric            string
@@ -118,6 +119,7 @@ func ConfigFromEnv() Config {
 		excludedNamespaces = append(excludedNamespaces, strings.TrimSpace(agentNamespace))
 	}
 	cfg := Config{
+		FinOpsBaselineCapacityEnabled:      getenvBool("ENVPLANE_FINOPS_BASELINE_CAPACITY_ENABLED", false),
 		FinOpsNodeInventoryEnabled:         getenvBool("ENVPLANE_FINOPS_NODE_INVENTORY_ENABLED", false),
 		FinOpsCadvisorContainerdUIDEnabled: getenvBool("ENVPLANE_FINOPS_CADVISOR_CONTAINERD_UID_ENABLED", false),
 		FinOpsStorageUsedMetric:            getenv("ENVPLANE_FINOPS_STORAGE_USED_METRIC", "kubelet_volume_stats_used_bytes"),
