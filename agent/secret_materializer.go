@@ -257,6 +257,9 @@ func clearMaterialBytes(value []byte) {
 	}
 }
 func materializationErrorCode(err error) string {
+	if errors.Is(err, ErrSecretNotFound) {
+		return "source_not_found"
+	}
 	if errors.Is(err, ErrDatabaseCredentialRecovery) {
 		return "database_credential_recovery_required"
 	}

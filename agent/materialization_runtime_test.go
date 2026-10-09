@@ -116,3 +116,59 @@ func TestMaterializationWireItemErrorCodeIsCanonical(t *testing.T) {
 		}
 	}
 }
+
+func TestSecretMaterializationRuntimeReportsMissingSourceConsistently(t *testing.T) {
+	plan := materializerPlan(t, []domain.SecretStrategyConfig{{ID: "clone", Strategy: domain.SecretStrategyEncryptedClone, SourceNamespace: "base", SourceName: "source", TargetNamespace: "target", TargetName: "clone", EncryptedPayloadRef: "envelopes/clone"}})
+	command := domain.AgentSecretMaterializationCommand{ContractVersion: domain.SecretMaterializationCommandContractVersion, CommandID: "command", TenantID: plan.TenantID, ProjectID: plan.ProjectID, EnvironmentID: plan.EnvironmentID, ClusterID: "cluster", AgentID: "agent", Operation: domain.SecretOperationMaterialize, PlanID: plan.PlanID, PlanDigest: plan.Digest, ExpectedRevision: plan.Revision, Plan: plan, Status: domain.SecretCommandClaimed, Attempt: 1, AttemptID: "attempt", CreatedAt: time.Unix(2, 0), EnvelopeLeases: map[string]domain.SecretMaterializationEnvelopeLease{"clone": {LeaseID: "lease", EnvelopeDigest: "sha256:digest", Audience: "agent", ExpiresAt: time.Now().UTC().Add(time.Hour)}}}
+	var reported domain.AgentSecretMaterializationResult
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.Method {
+		case http.MethodGet:
+			_ = json.NewEncoder(w).Encode(command)
+		case http.MethodPost:
+			if err := json.NewDecoder(r.Body).Decode(&reported); err != nil {
+				t.Fatal(err)
+			}
+			_, _ = w.Write([]byte(`{"status":"accepted"}`))
+		default:
+			t.Fatalf("unexpected request %s %s", r.Method, r.URL.Path)
+		}
+	}))
+	defer server.Close()
+	fake := &materializerFake{secrets: map[string]SecretRecord{}}
+	materializer, err := NewSecretMaterializer(fake, nil, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	reporter := NewHTTPStatusReporterForAgent(server.URL, "runtime-token", "cluster", "agent", time.Second)
+	cfg := Config{ControlPlaneURL: server.URL, BootstrapProjectID: plan.ProjectID, ClusterID: "cluster", AgentID: "agent", AgentAuthToken: "runtime-token"}
+	if err := runSecretMaterializationCommandOnce(context.Background(), cfg, reporter, materializer, nil); err != nil {
+		t.Fatal(err)
+	}
+	if reported.Status != domain.SecretCommandFailed || reported.ErrorCode != domain.SecretErrorSourceNotFound || len(reported.Items) != 1 || reported.Items[0].Status != domain.SecretItemFailed || reported.Items[0].ErrorCode != domain.SecretErrorSourceNotFound {
+		t.Fatalf("reported partial failure = %#v", reported)
+	}
+}
+
+func TestSecretMaterializationScopeDeniedTargetKeepsNotFoundClassification(t *testing.T) {
+	sourceReads := 0
+	kube := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodGet || r.URL.Path != "/api/v1/namespaces/base/secrets/source" {
+			t.Fatalf("unexpected Kubernetes request %s %s", r.Method, r.URL.Path)
+		}
+		sourceReads++
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{"metadata":{"name":"source","namespace":"base"},"type":"Opaque","data":{"key":"b25l"}}`))
+	}))
+	defer kube.Close()
+	backend := NewKubernetesNamespaceSource(kube.URL, "kube-token", "", []string{"base", "target"}, kube.Client(), "target")
+	materializer, err := NewSecretMaterializer(backend, nil, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	plan := materializerPlan(t, []domain.SecretStrategyConfig{{ID: "clone", Strategy: domain.SecretStrategyEncryptedClone, SourceNamespace: "base", SourceName: "source", TargetNamespace: "target", TargetName: "clone", EncryptedPayloadRef: "envelopes/clone"}})
+	results, err := materializer.Execute(context.Background(), MaterializationCommand{TenantID: plan.TenantID, PlanID: plan.PlanID, PlanDigest: plan.Digest, Audience: "runner", Plan: plan})
+	if sourceReads != 1 || len(results) != 1 || materializationWireErrorCode(err) != domain.SecretErrorSourceNotFound || materializationWireItemErrorCode(results[0].ErrorCode) != domain.SecretErrorSourceNotFound {
+		t.Fatalf("scope denial classification: sourceReads=%d results=%v error=%v", sourceReads, results, err)
+	}
+}
