@@ -469,12 +469,16 @@ func (s *ResourceDiscoveryScanner) listNamespaceResources(ctx context.Context, n
 	return snapshots, strings.Join(itemWarnings, "; "), nil
 }
 
-// UID is an immutable copy binding, not reusable feature-manifest metadata.
+// UID is an immutable source binding, not reusable feature-manifest metadata.
+// Database restore additionally pins its source workload and credential Secret
+// to prevent replacing either object under the same name after review.
 func pvcSourceUID(kind, uid string) string {
-	if kind != "PersistentVolumeClaim" {
+	switch kind {
+	case "PersistentVolumeClaim", "StatefulSet", "Deployment", "Secret":
+		return strings.TrimSpace(uid)
+	default:
 		return ""
 	}
-	return strings.TrimSpace(uid)
 }
 
 func isImplicitNamespaceBootstrapResource(kind, name string, resource map[string]any) bool {

@@ -6,8 +6,13 @@ func TestPVCSourceIdentitySeparateFromDeployableManifest(t *testing.T) {
 	if pvcSourceUID("PersistentVolumeClaim", " source-uid ") != "source-uid" {
 		t.Fatal("PVC identity missing")
 	}
-	if pvcSourceUID("Secret", "source-uid") != "" {
-		t.Fatal("unrelated identity added")
+	for _, kind := range []string{"Secret", "StatefulSet", "Deployment"} {
+		if pvcSourceUID(kind, " source-uid ") != "source-uid" {
+			t.Fatalf("database source identity missing for %s", kind)
+		}
+	}
+	if pvcSourceUID("ConfigMap", "source-uid") != "" {
+		t.Fatal("unrelated source identity added")
 	}
 	manifest := map[string]any{"apiVersion": "v1", "kind": "PersistentVolumeClaim", "metadata": map[string]any{"name": "data", "namespace": "base", "uid": "source-uid"}}
 	safe := sanitizeResourceManifest("PersistentVolumeClaim", manifest, "base", "data")
