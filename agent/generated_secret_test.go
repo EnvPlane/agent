@@ -54,3 +54,16 @@ func TestGeneratedSecretGeneratorRejectsUnrecognisedProfile(t *testing.T) {
 		t.Fatal("expected unsupported profile error")
 	}
 }
+
+func TestGeneratedMySQLAdministratorCredentialIsIndependent(t *testing.T) {
+	data, err := NewGeneratedSecretGenerator().Generate(context.Background(), domain.SecretMaterializationItem{Generator: "mysql-password-v1:DB_PASSWORD"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(data["MYSQL_ROOT_PASSWORD"]) == 0 || string(data["MYSQL_ROOT_PASSWORD"]) == string(data["DB_PASSWORD"]) {
+		t.Fatal("MySQL administrator credential is missing or shares application authority")
+	}
+	if string(data["MYSQL_PASSWORD"]) != string(data["DB_PASSWORD"]) {
+		t.Fatal("application password aliases changed")
+	}
+}

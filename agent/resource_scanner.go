@@ -474,7 +474,7 @@ func (s *ResourceDiscoveryScanner) listNamespaceResources(ctx context.Context, n
 // to prevent replacing either object under the same name after review.
 func pvcSourceUID(kind, uid string) string {
 	switch kind {
-	case "PersistentVolumeClaim", "StatefulSet", "Deployment", "Secret":
+	case "PersistentVolumeClaim", "StatefulSet", "Deployment", "Secret", "Service":
 		return strings.TrimSpace(uid)
 	default:
 		return ""

@@ -150,7 +150,7 @@ func materializationWireResults(plan domain.SecretMaterializationPlan, results [
 		if result.Status != "ready" {
 			state = domain.SecretItemFailed
 		}
-		wire = append(wire, domain.SecretMaterializationItemResult{ItemID: result.ItemID, Strategy: item.Strategy, TargetNamespace: item.TargetNamespace, TargetName: item.TargetName, Operation: domain.SecretOperationMaterialize, IdempotencyKey: key, InputDigest: plan.InputDigest, Status: state, ErrorCode: materializationWireItemErrorCode(result.ErrorCode), Attempt: 1, StartedAt: finished, FinishedAt: finished})
+		wire = append(wire, domain.SecretMaterializationItemResult{ItemID: result.ItemID, Strategy: item.Strategy, TargetNamespace: item.TargetNamespace, TargetName: item.TargetName, Operation: domain.SecretOperationMaterialize, IdempotencyKey: key, InputDigest: plan.InputDigest, OutputUID: result.OutputUID, Status: state, ErrorCode: materializationWireItemErrorCode(result.ErrorCode), Attempt: 1, StartedAt: finished, FinishedAt: finished})
 	}
 	return wire, nil
 }

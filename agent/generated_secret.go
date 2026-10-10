@@ -35,6 +35,15 @@ func (GeneratedSecretGenerator) Generate(_ context.Context, item domain.SecretMa
 			data[engineKey] = append([]byte(nil), password...)
 		}
 	}
+	if profile == "mysql-password-v1" && key != "MYSQL_ROOT_PASSWORD" {
+		root := make([]byte, generatedSecretBytes)
+		if _, err := rand.Read(root); err != nil {
+			clearMaterialBytes(password)
+			return nil, fmt.Errorf("generate isolated MySQL administrator credential: %w", err)
+		}
+		data["MYSQL_ROOT_PASSWORD"] = []byte(base64.RawURLEncoding.EncodeToString(root))
+		clearMaterialBytes(root)
+	}
 	return data, nil
 }
 

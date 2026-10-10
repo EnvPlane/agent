@@ -6,7 +6,7 @@ func TestPVCSourceIdentitySeparateFromDeployableManifest(t *testing.T) {
 	if pvcSourceUID("PersistentVolumeClaim", " source-uid ") != "source-uid" {
 		t.Fatal("PVC identity missing")
 	}
-	for _, kind := range []string{"Secret", "StatefulSet", "Deployment"} {
+	for _, kind := range []string{"Secret", "StatefulSet", "Deployment", "Service"} {
 		if pvcSourceUID(kind, " source-uid ") != "source-uid" {
 			t.Fatalf("database source identity missing for %s", kind)
 		}

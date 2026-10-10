@@ -76,6 +76,7 @@ type MaterializationResult struct {
 	ItemID    string `json:"itemId"`
 	Status    string `json:"status"`
 	ErrorCode string `json:"errorCode,omitempty"`
+	OutputUID string `json:"outputUid,omitempty"`
 }
 
 type SecretMaterializer struct {
@@ -109,6 +110,16 @@ func (m *SecretMaterializer) Execute(ctx context.Context, command Materializatio
 			result.Status, result.ErrorCode = "failed", materializationErrorCode(err)
 			results = append(results, result)
 			return results, err
+		}
+		if item.Strategy == domain.SecretStrategyGenerated {
+			actual, err := m.client.GetSecret(ctx, item.TargetNamespace, item.TargetName)
+			if err != nil || actual.Labels["app.kubernetes.io/managed-by"] != "envplane" || actual.Annotations["envplane.io/secret-plan-digest"] != command.PlanDigest {
+				result.Status, result.ErrorCode = "failed", "invalid_binding"
+				results = append(results, result)
+				return results, ErrForeignSecret
+			}
+			// Only immutable identity leaves the Agent, never Secret data.
+			result.OutputUID = actual.UID
 		}
 		results = append(results, result)
 	}
