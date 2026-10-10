@@ -357,6 +357,7 @@ func (s *ResourceDiscoveryScanner) listNamespaceResources(ctx context.Context, n
 		Items []struct {
 			Metadata struct {
 				Name            string                          `json:"name"`
+				UID             string                          `json:"uid"`
 				Namespace       string                          `json:"namespace"`
 				Labels          map[string]string               `json:"labels"`
 				Annotations     map[string]string               `json:"annotations"`
@@ -448,6 +449,7 @@ func (s *ResourceDiscoveryScanner) listNamespaceResources(ctx context.Context, n
 		}
 		snapshots = append(snapshots, domain.ResourceSnapshot{
 			Kind:            kind,
+			SourceUID:       pvcSourceUID(kind, item.Metadata.UID),
 			Namespace:       ns,
 			Name:            name,
 			Labels:          item.Metadata.Labels,
@@ -465,6 +467,14 @@ func (s *ResourceDiscoveryScanner) listNamespaceResources(ctx context.Context, n
 		})
 	}
 	return snapshots, strings.Join(itemWarnings, "; "), nil
+}
+
+// UID is an immutable copy binding, not reusable feature-manifest metadata.
+func pvcSourceUID(kind, uid string) string {
+	if kind != "PersistentVolumeClaim" {
+		return ""
+	}
+	return strings.TrimSpace(uid)
 }
 
 func isImplicitNamespaceBootstrapResource(kind, name string, resource map[string]any) bool {
