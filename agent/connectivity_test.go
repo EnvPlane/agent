@@ -29,6 +29,34 @@ func TestCheckControlPlaneHealthUsesHealthEndpointWithoutCredentials(t *testing.
 	}
 }
 
+func TestManagementPreflightHonorsSameClusterServiceTransportPolicy(t *testing.T) {
+	for _, tc := range []struct {
+		name, endpoint, mode string
+		wantInsecure         bool
+	}{
+		{"service", "http://api.envplane.svc:8080", "sameCluster", false},
+		{"full service DNS", "http://api.envplane.svc.cluster.local:8080", "sameCluster", false},
+		{"default mode", "http://api.envplane.svc:8080", "", false},
+		{"external same cluster", "http://api.example.com", "sameCluster", true},
+		{"remote service", "http://api.envplane.svc:8080", "remote", true},
+		{"remote external", "http://api.example.com", "remote", true},
+		{"suffix lookalike", "http://api.envplane.svc.attacker.example", "sameCluster", true},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			ctx, cancel := context.WithCancel(context.Background())
+			cancel() // Inspect transport classification without real DNS/traffic.
+			cfg := Config{ControlPlaneURL: tc.endpoint, ControlPlaneEndpointMode: tc.mode, ReportTimeout: time.Second}
+			report := ProbeManagementEndpoint(ctx, cfg, nil, 1)
+			if (report.Code == "insecure_transport") != tc.wantInsecure {
+				t.Fatalf("unexpected transport classification: %s", report.Code)
+			}
+			if report.Code == "passed" || report.RuntimeAccess || report.TLSVerified {
+				t.Fatal("transport policy alone must not claim endpoint/authentication/TLS success")
+			}
+		})
+	}
+}
+
 func TestProbeManagementEndpointPassesWithRuntimeAuthWithoutLeakingBootstrapToken(t *testing.T) {
 	const runtimeToken = "runtime-token-for-test"
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
