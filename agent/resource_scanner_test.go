@@ -191,7 +191,41 @@ func TestResourceDiscoveryScannerDoesNotCallSecretsAPIWithoutExplicitOptIn(t *te
 	t.Fatal("secret-enabled scanner did not call the Secrets API")
 }
 
+func TestSecretDiscoveryExcludesHelmStorageButRetainsApplicationDependencies(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{"items":[
+			{"metadata":{"name":"sh.helm.release.v1.app.v1","namespace":"template"},"type":"helm.sh/release.v1","data":{"release":"private-history-marker"}},
+			{"metadata":{"name":"backend-secret","namespace":"template"},"type":"Opaque","data":{"password":"private-password-marker"}}
+		]}`))
+	}))
+	defer server.Close()
+	scanner := NewResourceDiscoveryScanner(NewKubernetesNamespaceSource(server.URL, "token", "", []string{"template"}, server.Client()), true)
+	snapshots, warning, err := scanner.listNamespaceResources(context.Background(), "template", "Secret", "/api/v1/namespaces/template/secrets")
+	if err != nil || warning != "" {
+		t.Fatalf("scan failed: warning=%s err=%v", warning, err)
+	}
+	if len(snapshots) != 1 || snapshots[0].Name != "backend-secret" {
+		t.Fatal("inventory must contain only the application Secret")
+	}
+	encoded, err := json.Marshal(snapshots)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(string(encoded), "private-") || strings.Contains(string(encoded), "sh.helm.release") {
+		t.Fatal("inventory must not publish Secret values or Helm history")
+	}
+}
+
 func TestImplicitNamespaceBootstrapResourcesAreExcluded(t *testing.T) {
+	if !isImplicitNamespaceBootstrapResource("Secret", "sh.helm.release.v1.app.v1", map[string]any{"type": "helm.sh/release.v1"}) {
+		t.Fatal("Helm release bookkeeping must be excluded")
+	}
+	for _, secretType := range []string{"Opaque", "kubernetes.io/dockerconfigjson", ""} {
+		if isImplicitNamespaceBootstrapResource("Secret", "sh.helm.release.v1.app.v1", map[string]any{"type": secretType}) {
+			t.Fatal("Secret names alone must not exclude application dependencies")
+		}
+	}
 	if !isImplicitNamespaceBootstrapResource("ConfigMap", "kube-root-ca.crt", map[string]any{}) {
 		t.Fatal("namespace root CA ConfigMap must be excluded")
 	}

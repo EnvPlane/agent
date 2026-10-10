@@ -468,6 +468,11 @@ func (s *ResourceDiscoveryScanner) listNamespaceResources(ctx context.Context, n
 }
 
 func isImplicitNamespaceBootstrapResource(kind, name string, resource map[string]any) bool {
+	// Helm's release storage is controller bookkeeping, not an application
+	// dependency. Keep ordinary application and registry Secrets discoverable.
+	if kind == "Secret" && resource["type"] == "helm.sh/release.v1" {
+		return true
+	}
 	if kind == "ConfigMap" && name == "kube-root-ca.crt" {
 		return true
 	}
