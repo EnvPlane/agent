@@ -18,7 +18,7 @@ concurrency:
 
 jobs:
   required-go-ci:
-    if: github.repository == 'EnvPlane/agent' && (github.event_name == 'push' || (github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main'))
+    if: github.repository == 'envplane/agent' && (github.event_name == 'push' || (github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main'))
     runs-on: ubuntu-latest
     timeout-minutes: 25
     permissions:
@@ -37,10 +37,10 @@ jobs:
           script: |
             const {requireGoCI} = require('./.github/scripts/required-go-ci.cjs');
             await requireGoCI({github, context, core,
-              expectedRepository: 'EnvPlane/agent', expectedName: 'Agent CI'});
+              expectedRepository: 'envplane/agent', expectedName: 'Agent CI'});
   publish:
     needs: required-go-ci
-    if: github.repository == 'EnvPlane/agent' && (github.event_name == 'push' || (github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main'))
+    if: github.repository == 'envplane/agent' && (github.event_name == 'push' || (github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main'))
     runs-on: ubuntu-latest
     outputs:
       component: ${{ steps.published.outputs.component }}
