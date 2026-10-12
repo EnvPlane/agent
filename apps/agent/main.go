@@ -265,11 +265,16 @@ func runHeartbeat(ctx context.Context, cfg clusteragent.Config, reporter *cluste
 	ticker := time.NewTicker(cfg.HeartbeatInterval)
 	defer ticker.Stop()
 	var scanRunning atomic.Bool
+	var authFailures int
+	var retryAfter time.Time
 	for {
 		select {
 		case <-ctx.Done():
 			return
 		case <-ticker.C:
+			if time.Now().Before(retryAfter) {
+				continue
+			}
 			tickCtx, cancel := context.WithTimeout(ctx, 30*time.Second)
 			capabilities, err := source.DiscoverCapabilities(tickCtx)
 			if err != nil {
@@ -285,6 +290,12 @@ func runHeartbeat(ctx context.Context, cfg clusteragent.Config, reporter *cluste
 			}
 			if err := reporter.ReportHeartbeatWithEndpointPreflight(tickCtx, cfg, capabilities, status, statusErr, preflight); err != nil {
 				cancel()
+				if isHeartbeatAuthDenied(err) {
+					authFailures++
+					delay := heartbeatAuthRetryDelay(authFailures)
+					retryAfter = time.Now().Add(delay)
+					logger.Warn("agent authentication degraded; operator reconnect or retirement may be required", "retry_after_seconds", int(delay.Seconds()))
+				}
 				if (isFixtureIdentityReissuedError(err) || isSameClusterIdentityReissuedError(err) || isAgentAuthTokenNotIssuedError(err)) && strings.TrimSpace(bootstrapRegistrationToken) != "" {
 					recoveryCtx, recoveryCancel := context.WithTimeout(ctx, 2*cfg.ReportTimeout)
 					// The control plane re-opened the explicit E2E fixture's hashed
@@ -298,11 +309,16 @@ func runHeartbeat(ctx context.Context, cfg clusteragent.Config, reporter *cluste
 						continue
 					}
 					reporter.SetToken(cfg.AgentAuthToken)
+					authFailures, retryAfter = 0, time.Time{}
 					logger.Info("agent runtime identity recovered", "cluster_id", cfg.ClusterID, "agent_id", cfg.AgentID)
 					continue
 				}
-				logger.Error("agent heartbeat failed", "cluster_id", cfg.ClusterID, "agent_id", cfg.AgentID, "error", err)
+				if !isHeartbeatAuthDenied(err) {
+					logger.Error("agent heartbeat failed", "cluster_id", cfg.ClusterID, "agent_id", cfg.AgentID, "error", err)
+				}
+				continue // rejected identities must not dispatch resource scans
 			}
+			authFailures, retryAfter = 0, time.Time{}
 			cancel()
 			if preflight.Code == "passed" {
 				if acquireResourceScan(&scanRunning) {
@@ -318,6 +334,18 @@ func runHeartbeat(ctx context.Context, cfg clusteragent.Config, reporter *cluste
 			}
 		}
 	}
+}
+
+func isHeartbeatAuthDenied(err error) bool {
+	var response *clusteragent.APIError
+	return errors.As(err, &response) && (response.Status == 401 || response.Status == 403 || response.Status == 404)
+}
+
+func heartbeatAuthRetryDelay(failures int) time.Duration {
+	if failures < 1 {
+		return 0
+	}
+	return min(time.Minute*time.Duration(1<<min(failures-1, 4)), 10*time.Minute)
 }
 
 func isFixtureIdentityReissuedError(err error) bool {
